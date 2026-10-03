@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined,
+  ArrowLeftOutlined,
   CarryOutOutlined,
   ClusterOutlined,
   DashboardOutlined,
@@ -18,6 +19,8 @@ const auth = useAuthStore()
 // 登录页不需要侧边菜单（独立全屏布局）
 const isPlainPage = computed(() => route.path === '/login')
 const collapsed = ref(false) // 侧栏收起态（控制 Logo 显示）
+// 非菜单页（meta.back）顶栏显示返回按钮
+const showBack = computed(() => route.meta.back === true)
 
 function onLogout() {
   auth.logout()
@@ -77,7 +80,17 @@ function onMenuClick(info: { key: string | number }) {
     <a-layout>
       <!-- 顶栏：面包屑占位 + 用户操作 -->
       <a-layout-header class="app-header">
-        <span class="app-header-title">{{ route.meta.title ?? '' }}</span>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <a-button
+            v-if="showBack"
+            size="small"
+            @click="router.back()"
+          >
+            <template #icon><ArrowLeftOutlined /></template>
+            返回
+          </a-button>
+          <span class="app-header-title">{{ route.meta.title ?? '' }}</span>
+        </div>
         <a-button v-if="auth.isLoggedIn" type="link" @click="onLogout">
           退出（{{ auth.userId }}）
         </a-button>
