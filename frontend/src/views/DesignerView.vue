@@ -47,6 +47,12 @@ function onCondSave(expr: string) {
 // 快捷键：Ctrl+Z / Ctrl+Shift+Z（T6.3）
 function onKeydown(e: KeyboardEvent) {
   if (!(e.ctrlKey || e.metaKey)) return
+  // 焦点在输入类控件中时不拦截：保留输入框自身的撤销行为
+  const target = e.target as HTMLElement | null
+  if (
+    target &&
+    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+  ) return
   if (e.key.toLowerCase() === 'z' && !e.shiftKey) {
     e.preventDefault()
     store.undo()

@@ -9,8 +9,7 @@ import { EyeOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { api } from '../api/workflow'
 import type { DefinitionRow, WorkflowDSL } from '../types'
 import { NODE_SHAPE } from '../types/workflow'
-import { NODE_TYPE_LABELS } from '../constants/status'
-import { DEFINITION_STATUS_META } from '../constants/status'
+import { NODE_TYPE_LABELS, DEFINITION_STATUS_META } from '../constants/status'
 import { registerFlowNodes } from '../modules/designer/customNodes'
 
 const router = useRouter()

@@ -22,7 +22,8 @@ http.interceptors.response.use(
     const body = resp.data as { code: number; message: string; data: unknown }
     if (body.code !== 0) {
       if (body.code === 42100 || body.code === 43102) {
-        message.warning('状态已变化，已为您刷新，请重试')
+        // 冲突类错误：前端并未自动刷新数据，提示语必须与实际行为一致
+        message.warning('状态已被其他操作变更，请刷新页面后重试')
       } else {
         message.error(`${body.message}（${body.code}）`)
       }

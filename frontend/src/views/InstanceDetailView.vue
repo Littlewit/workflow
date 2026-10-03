@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** 实例详情：任务列表（状态/动作中文化）+ 事件时间线（本地化时间）。 */
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/workflow'
 import type { InstanceDetail } from '../api/workflow'
@@ -16,14 +16,19 @@ function label(type: string): string {
   return EVENT_LABELS[type] ?? type
 }
 
-onMounted(async () => {
+/** 加载实例详情（路由参数变化时复用调用）。 */
+async function load() {
   loading.value = true
   try {
     detail.value = await api.getInstance(route.params.id as string)
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(load)
+// 同组件路由复用（/approval/detail/a → b）时重新加载，避免展示旧实例数据
+watch(() => route.params.id, () => { if (route.params.id) void load() })
 </script>
 
 <template>

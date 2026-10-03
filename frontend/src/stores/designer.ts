@@ -48,14 +48,27 @@ export const useDesignerStore = defineStore('designer', () => {
     return selectedKey.value !== '' && !(selectedKey.value in dsl.value.nodes)
   }
 
-  /** 结构变更统一入口：先压栈快照，再执行变更（异常则回滚快照），最后版本 +1。 */
-  function commit(mutator: () => void) {
-    past.value.push(clone(dsl.value))
-    if (past.value.length > MAX_HISTORY) past.value.shift() // 栈上限，防内存膨胀
+  // 连续同类小变更合并标记：相同 tag 且间隔 < MERGE_MS 的变更共享同一份撤销快照
+  // （典型场景：配置面板输入框逐键修改节点名称，不应每个字符占一条撤销记录）
+  let lastTag = ''
+  let lastTagAt = 0
+  const MERGE_MS = 800
+
+  /** 结构变更统一入口：先压栈快照，再执行变更（异常则回滚快照），最后版本 +1。
+   *  tag：可选的变更合并标记（如 "update:node_x"），相同 tag 的连续变更合并为一次撤销。 */
+  function commit(mutator: () => void, tag = '') {
+    const now = Date.now()
+    const coalesce = tag !== '' && tag === lastTag && now - lastTagAt < MERGE_MS
+    lastTag = tag
+    lastTagAt = now
+    if (!coalesce) {
+      past.value.push(clone(dsl.value))
+      if (past.value.length > MAX_HISTORY) past.value.shift() // 栈上限，防内存膨胀
+    }
     try {
       mutator()
     } catch (err) {
-      past.value.pop() // 变更失败：快照不入栈，保持撤销语义一致
+      if (!coalesce) past.value.pop() // 变更失败：快照不入栈，保持撤销语义一致
       throw err
     }
     future.value = []
@@ -66,6 +79,7 @@ export const useDesignerStore = defineStore('designer', () => {
   function undo() {
     const prev = past.value.pop()
     if (!prev) return
+    lastTag = '' // 撤销后中断合并窗口，避免下一次变更误并入旧快照
     future.value.push(clone(dsl.value))
     dsl.value = prev
     version.value++
@@ -75,6 +89,7 @@ export const useDesignerStore = defineStore('designer', () => {
   function redo() {
     const next = future.value.pop()
     if (!next) return
+    lastTag = ''
     past.value.push(clone(dsl.value))
     dsl.value = next
     version.value++
@@ -87,6 +102,7 @@ export const useDesignerStore = defineStore('designer', () => {
     dsl.value = existing.dsl
     past.value = []
     future.value = []
+    lastTag = '' // 重置合并窗口，避免加载前的 tag 影响后续撤销快照
     selectedKey.value = ''
     layout.value = {}
     version.value++
@@ -223,12 +239,13 @@ export const useDesignerStore = defineStore('designer', () => {
     })
   }
 
-  /** 更新节点属性（配置面板）；key 不存在时静默忽略（与画布状态解耦）。 */
+  /** 更新节点属性（配置面板）；key 不存在时静默忽略（与画布状态解耦）。
+   *  传入 tag 使连续逐键修改合并为一个撤销快照。 */
   function updateNode(key: string, patch: Partial<WfNode>) {
     if (!(key in dsl.value.nodes)) return
     commit(() => {
       Object.assign(dsl.value.nodes[key], patch)
-    })
+    }, `update:${key}`)
   }
 
   /** 在指定节点之后插入新节点（纵向画布卡片间的 ＋ 按钮）。 */

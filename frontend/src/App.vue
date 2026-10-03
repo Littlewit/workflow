@@ -8,6 +8,7 @@ import {
   CarryOutOutlined,
   ClusterOutlined,
   DashboardOutlined,
+  DownOutlined,
   LogoutOutlined,
   SendOutlined,
   UserOutlined,
