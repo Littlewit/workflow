@@ -32,9 +32,9 @@ function onMenuClick(info: { key: string | number }) {
   <!-- 登录页：无菜单的独立布局 -->
   <router-view v-if="isPlainPage" />
 
-  <a-layout v-else style="min-height: 100vh">
+  <a-layout v-else style="height: 100vh">
     <!-- 左侧菜单 -->
-    <a-layout-sider collapsible breakpoint="lg" theme="dark">
+    <a-layout-sider collapsible breakpoint="lg" theme="dark" style="overflow: auto">
       <div class="app-logo">工作流引擎</div>
       <a-menu
         theme="dark"
@@ -69,7 +69,7 @@ function onMenuClick(info: { key: string | number }) {
           退出（{{ auth.userId }}）
         </a-button>
       </a-layout-header>
-      <a-layout-content class="app-content">
+      <a-layout-content class="app-content" style="overflow: auto; height: calc(100vh - 64px)">
         <router-view />
       </a-layout-content>
     </a-layout>
