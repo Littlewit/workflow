@@ -118,6 +118,11 @@ function branchTargetName(b: TreeBranch): string {
               <!-- 分支上下接入短线：把分支与泳道汇聚线连成一体（先渲染，位于卡片层之下） -->
               <span class="lane-stub lane-stub-top" />
               <span class="lane-stub lane-stub-bottom" />
+              <!-- 遮盖块：盖掉汇聚线超出首/末分支中点的部分（颜色与泳道底色一致，隐形） -->
+              <span v-if="bi === 0" class="lane-mask mask-tl" />
+              <span v-if="bi === 0" class="lane-mask mask-bl" />
+              <span v-if="bi === item.branches.length - 1" class="lane-mask mask-tr" />
+              <span v-if="bi === item.branches.length - 1" class="lane-mask mask-br" />
               <div
                 class="flow-branch-tag"
                 :class="{ 'is-default': isDefaultBranch(item.gatewayKey, b.branchKey), unset: !isDefaultBranch(item.gatewayKey, b.branchKey) && !branchCondition(item.gatewayKey, b.branchKey) }"
@@ -202,25 +207,27 @@ function branchTargetName(b: TreeBranch): string {
   width: 26px; height: 26px; border-radius: 50%;
   background: #1677ff; color: #fff;
   display: flex; align-items: center; justify-content: center;
-  cursor: pointer; margin: 6px 0; font-size: 14px; user-select: none;
+  cursor: pointer; margin: 10px 0; font-size: 14px; user-select: none;
 }
-/* 节点间竖向连线：+ 号圆上下各延伸 6px，恰好补齐与相邻卡片之间的 margin 间隙 */
+/* 节点间竖向连线：+ 号圆上下各延伸 10px，恰好补齐与相邻卡片之间的 margin 间隙 */
 .flow-plus::before,
 .flow-plus::after {
   content: ''; position: absolute; left: 50%; width: 2px; margin-left: -1px;
   background: #caccd9;
 }
-.flow-plus::before { top: -6px; height: 6px; }        /* 上段：补齐 margin-top 间隙 */
-.flow-plus::after { top: 100%; bottom: -6px; }        /* 下段：补齐 margin-bottom 间隙 */
+.flow-plus::before { top: -10px; height: 10px; }      /* 上段：补齐 margin-top 间隙 */
+.flow-plus::after { top: 100%; bottom: -10px; }       /* 下段：补齐 margin-bottom 间隙 */
 .flow-plus:hover { background: #4096ff; }
 
 /* 分支泳道：外层只做定位容器（宽度 = lane 宽度），保证整体在画布中水平居中 */
 .flow-branches { position: relative; }
 .flow-lane {
   position: relative; display: flex; gap: 12px; align-items: stretch;
-  padding: 14px 16px; /* 上下留出汇聚线与分支之间的接入空间 */
+  padding: 16px 20px; /* 上下留出汇聚线与分支之间的接入空间 */
+  background: #fafbfc; border-radius: 10px; /* 与分支同色：让遮盖块无缝隐形 */
 }
-/* 顶部/底部汇聚线：横贯泳道，上游流入线在顶部中点接入，下游从底部中点流出 */
+/* 顶部/底部汇聚线：横贯泳道，上游流入线在顶部中点接入，下游从底部中点流出。
+   两端超出首/末分支中点的部分由 lane-mask 遮盖。 */
 .flow-lane::before,
 .flow-lane::after {
   content: ''; position: absolute; left: 0; right: 0; height: 2px;
@@ -234,12 +241,20 @@ function branchTargetName(b: TreeBranch): string {
   position: absolute; left: 50%; width: 2px; margin-left: -1px;
   background: #caccd9;
 }
-/* 高度 20px = 泳道 padding 14px + 深入分支 6px，确保与标签/卡片视觉相接 */
-.lane-stub-top { top: -14px; height: 20px; }
-.lane-stub-bottom { bottom: -14px; height: 20px; }
+/* 高度 22px = 泳道 padding 16px + 深入分支 6px，确保与标签/卡片视觉相接 */
+.lane-stub-top { top: -16px; height: 22px; }
+.lane-stub-bottom { bottom: -16px; height: 22px; }
+
+/* 遮盖块：2px 高、与汇聚线同位，颜色与泳道底色一致。
+   z-index:1 需盖过 .flow-lane::after（伪元素晚于子元素绘制），彻底收掉两端线头。 */
+.lane-mask { position: absolute; height: 2px; background: #fafbfc; z-index: 1; }
+.mask-tl { top: -16px; left: -20px; width: calc(50% + 20px); }   /* 首分支：盖到分支中点 */
+.mask-bl { bottom: -16px; left: -20px; width: calc(50% + 20px); }
+.mask-tr { top: -16px; right: -20px; width: calc(50% + 20px); }  /* 末分支：盖到分支中点 */
+.mask-br { bottom: -16px; right: -20px; width: calc(50% + 20px); }
 
 .flow-branch {
-  position: relative; /* 接入短线的定位基准 */
+  position: relative; /* 接入短线/遮盖块的定位基准 */
   display: flex; flex-direction: column; align-items: center;
   background: #fafbfc; border: 1px solid #f0f0f0; border-radius: 10px;
   padding: 0 10px; /* 上下不留内边距：让 + 号连线直接贴合分支边缘 */
@@ -256,7 +271,8 @@ function branchTargetName(b: TreeBranch): string {
 .flow-branch-tag {
   width: 100%; box-sizing: border-box; border-radius: 8px; padding: 6px 10px;
   cursor: pointer; background: #fffbe6; border: 1px dashed #faad14;
-  display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px;
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 6px 0 8px; /* 顶部 6px 与接入短线深入部分衔接，底部留出与卡片间距 */
 }
 .flow-branch-tag.is-default { background: #f0f5ff; border-color: #91caff; }
 .flow-branch-tag.unset { background: #fff1f0; border-color: #ffa39e; }
