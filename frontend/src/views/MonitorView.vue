@@ -132,11 +132,10 @@ onMounted(async () => {
           >
             {{ status }}: {{ count }}
           </a-tag>
-          <a-empty
-            v-if="!Object.keys(overview?.taskCounts ?? {}).length"
-            description="暂无任务数据"
-          />
         </a-space>
+        <div v-if="!Object.keys(overview?.taskCounts ?? {}).length" style="text-align: center; padding: 16px 0">
+          <a-empty description="暂无任务数据" />
+        </div>
       </a-card>
     </template>
   </a-spin>
