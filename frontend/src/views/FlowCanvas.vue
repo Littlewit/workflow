@@ -161,7 +161,17 @@ function branchTargetName(b: TreeBranch): string {
 </template>
 <style scoped>
 .flow-canvas { display: flex; flex-direction: column; align-items: center; }
-.flow-node { display: flex; flex-direction: column; align-items: center; }
+.flow-node { position: relative; display: flex; flex-direction: column; align-items: center; }
+/* 进入节点的流向箭头：位于卡片正上方、指向卡片（仅当上游是节点或泳道出口 + 号时）。
+   用 border 三角绘制，translate(-50%,-100%) 使箭头底边紧贴卡片顶边，与 + 号下段连线相接。 */
+.flow-node + .flow-node::before,
+.flow-plus + .flow-node::before {
+  content: ''; position: absolute; top: 0; left: 50%;
+  transform: translate(-50%, -100%);
+  border: 5px solid transparent;
+  border-top-color: #caccd9;  /* 与连线同色 */
+  border-bottom-width: 0;     /* 直角三角形，指向下方卡片 */
+}
 .flow-card {
   width: 240px; border-radius: 10px; overflow: hidden;
   border: 1px solid #e5e6eb; background: #fff; cursor: pointer;
