@@ -69,7 +69,8 @@ def make_leave_dsl() -> WorkflowDSL:
                     "properties": {
                         "days": {"type": "number", "title": "请假天数"},
                         "reason": {"type": "string", "title": "请假事由"},
-                    }
+                    },
+                    "required": ["days"],
                 },
             ),
             "approve_1": ApprovalNode(
@@ -114,7 +115,8 @@ def make_expense_dsl() -> WorkflowDSL:
                     "properties": {
                         "amount": {"type": "number", "title": "报销金额"},
                         "reason": {"type": "string", "title": "报销事由"},
-                    }
+                    },
+                    "required": ["amount"],
                 },
             ),
             "check_1": ApprovalNode(
@@ -146,7 +148,8 @@ def make_contract_dsl() -> WorkflowDSL:
                 form_schema={
                     "properties": {
                         "contract_no": {"type": "string", "title": "合同编号"},
-                    }
+                    },
+                    "required": ["contract_no"],
                 },
             ),
             "sign": ApprovalNode(
@@ -181,7 +184,8 @@ def make_purchase_dsl() -> WorkflowDSL:
                     "properties": {
                         "item": {"type": "string", "title": "采购物品"},
                         "amount": {"type": "number", "title": "采购金额（元）"},
-                    }
+                    },
+                    "required": ["item", "amount"],
                 },
             ),
             "gateway": ExclusiveGatewayNode(

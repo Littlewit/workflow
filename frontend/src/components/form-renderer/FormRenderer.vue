@@ -68,8 +68,8 @@ defineExpose({ validate })
         <a-select
           v-if="field.options"
           :disabled="readonly(key, field)"
-          :model-value="(modelValue[key] as string) ?? ''"
-          @change="(v: string) => setValue(key, v)"
+          :value="(modelValue[key] as string) ?? ''"
+          @update:value="(v: string) => setValue(key, v)"
         >
           <a-select-option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</a-select-option>
         </a-select>
@@ -77,8 +77,8 @@ defineExpose({ validate })
           v-else-if="field.type === 'number'"
           style="width: 100%"
           :disabled="readonly(key, field)"
-          :model-value="(modelValue[key] as number) ?? undefined"
-          @update:model-value="(v: number | undefined) => setValue(key, v)"
+          :value="(modelValue[key] as number) ?? undefined"
+          @update:value="(v: number | string | undefined) => setValue(key, v === '' ? undefined : (v as number))"
         />
         <a-switch
           v-else-if="field.type === 'boolean'"
@@ -89,8 +89,8 @@ defineExpose({ validate })
         <a-input
           v-else
           :disabled="readonly(key, field)"
-          :model-value="(modelValue[key] as string) ?? ''"
-          @update:model-value="(v: string | number) => setValue(key, v)"
+          :value="(modelValue[key] as string) ?? ''"
+          @update:value="(v: string | number) => setValue(key, v)"
         />
       </a-form-item>
     </template>
