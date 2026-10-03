@@ -15,7 +15,6 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,7 +27,7 @@ class WorkflowDefinition(Base):
     __tablename__ = "workflow_definition"
 
     # 统一主键策略：应用层生成 UUID 字符串（跨 SQLite/PG 兼容）
-    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
     code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -52,7 +51,7 @@ class WorkflowDefinitionVersion(Base):
     # uk_def_version：同一 definition 下版本号唯一
     __table_args__ = (UniqueConstraint("definition_id", "version", name="uk_def_version"),)
 
-    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
     definition_id: Mapped[str] = mapped_column(
         ForeignKey("workflow_definition.id"), index=True
     )

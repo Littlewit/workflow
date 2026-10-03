@@ -47,7 +47,8 @@ class EngineTask:
     id: str
     node_key: str
     node_name: str
-    assignee_id: str
+    node_type: str = ""  # 节点类型快照（列表展示/审计用）
+    assignee_id: str = ""
     status: TaskStatus = TaskStatus.PENDING
     round: int = 1  # 驳回重走时递增
     counter_sign_group_id: str | None = None  # 会签分组
@@ -319,6 +320,7 @@ class WorkflowEngine:
             task_id = uuid4().hex
             state.tasks[task_id] = EngineTask(
                 id=task_id, node_key=node.key, node_name=node.name,
+                node_type=node.type.value,
                 assignee_id=str(state.variables.get("$_initiator", "")),
                 round=round_no,
             )
@@ -343,6 +345,7 @@ class WorkflowEngine:
             task_id = uuid4().hex
             state.tasks[task_id] = EngineTask(
                 id=task_id, node_key=node.key, node_name=node.name,
+                node_type=node.type.value,
                 assignee_id=assignee, counter_sign_group_id=group_id,
                 round=round_no,
             )
