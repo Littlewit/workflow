@@ -11,6 +11,13 @@ const router = useRouter()
 const definitions = ref<DefinitionRow[]>([])
 const loading = ref(false)
 
+// 定义状态 → 中文标签/颜色
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  draft: { label: '草稿', color: 'orange' },
+  published: { label: '已发布', color: 'green' },
+  disabled: { label: '已停用', color: 'red' },
+}
+
 async function refresh() {
   loading.value = true
   try {
@@ -61,8 +68,8 @@ onMounted(refresh)
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'status'">
-          <a-tag :color="record.status === 'published' ? 'green' : record.status === 'disabled' ? 'red' : 'orange'">
-            {{ record.status }}
+          <a-tag :color="STATUS_META[record.status]?.color ?? 'default'">
+            {{ STATUS_META[record.status]?.label ?? record.status }}
           </a-tag>
         </template>
         <template v-else-if="column.dataIndex === 'action'">

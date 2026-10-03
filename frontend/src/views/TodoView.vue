@@ -8,6 +8,17 @@ import type { TaskSummary } from '../api/workflow'
 
 const router = useRouter()
 
+// 任务状态 → 中文标签/颜色
+const TASK_STATUS_META: Record<string, { label: string; color: string }> = {
+  pending: { label: '待处理', color: 'blue' },
+  processing: { label: '处理中', color: 'cyan' },
+  approved: { label: '已同意', color: 'green' },
+  rejected: { label: '已驳回', color: 'red' },
+  transferred: { label: '已转办', color: 'purple' },
+  canceled: { label: '已取消', color: 'default' },
+  timeout_auto: { label: '超时处理', color: 'orange' },
+}
+
 const tasks = ref<TaskSummary[]>([])
 const loading = ref(false)
 
@@ -45,7 +56,9 @@ onMounted(refresh)
       <a-table-column title="轮次" data-index="round" width="80" />
       <a-table-column title="状态" data-index="status" width="100">
         <template #default="{ record }">
-          <a-tag color="blue">{{ record.status }}</a-tag>
+          <a-tag :color="TASK_STATUS_META[record.status]?.color ?? 'default'">
+            {{ TASK_STATUS_META[record.status]?.label ?? record.status }}
+          </a-tag>
         </template>
       </a-table-column>
       <a-table-column title="操作" width="220">
