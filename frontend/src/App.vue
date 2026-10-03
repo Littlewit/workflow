@@ -39,7 +39,7 @@ function onMenuClick(info: { key: string | number }) {
       collapsible
       breakpoint="lg"
       theme="dark"
-      style="overflow: auto; background: linear-gradient(180deg, #001529 0%, #003a70 100%)"
+      style="overflow: auto; background: linear-gradient(180deg, #003a70 0%, #002140 100%)"
     >
       <div class="app-logo"><ClusterOutlined /> 工作流引擎</div>
       <a-menu
