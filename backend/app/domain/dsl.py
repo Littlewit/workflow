@@ -195,11 +195,13 @@ class SubprocessNode(BaseNode):
 
 
 class WebhookNode(BaseNode):
-    """Webhook 节点：调用外部系统；wait_callback=True 时阻塞等待回调。"""
+    """Webhook 节点：调用外部系统；wait_callback=True 时阻塞等待回调（M5 仅支持发后即忘）。"""
 
     type: Literal[NodeType.WEBHOOK] = NodeType.WEBHOOK
     url: str
     payload_template: dict = Field(default_factory=dict)
+    # HMAC-SHA256 签名密钥（X-WF-Sign 头，见详细设计 §5.3）
+    secret: str = ""
     wait_callback: bool = False
     # 失败处理：retry 重试 / terminate 终止实例 / continue 忽略失败继续
     on_fail: Literal["retry", "terminate", "continue"] = "retry"

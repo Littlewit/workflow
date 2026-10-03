@@ -33,7 +33,7 @@ def _http_status(code: int) -> int:
     return _HTTP_STATUS.get(code, 400)
 
 
-def _error_body(code: int, message: str, details=None) -> dict:
+def _error_body(code: int, message: str, details: object = None) -> dict[str, object]:
     """统一错误响应体。"""
     return {"code": code, "message": message, "details": details, "traceId": current_trace_id()}
 

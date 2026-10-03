@@ -6,6 +6,7 @@ from app.infra.models.instance import (
     TaskInstance,
     TaskOpinion,
     TaskSubstitute,
+    WebhookDelivery,
     WorkflowInstance,
     WorkflowVariable,
 )
@@ -19,4 +20,5 @@ __all__ = [
     "TaskSubstitute",
     "WorkflowVariable",
     "InstanceEvent",
+    "WebhookDelivery",
 ]

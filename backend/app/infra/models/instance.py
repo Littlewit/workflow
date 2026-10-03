@@ -134,6 +134,25 @@ class WorkflowVariable(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
 
 
+class WebhookDelivery(Base):
+    """Webhook 出站投递记录（详细设计 §2.9）：重试与死信追踪。"""
+
+    __tablename__ = "webhook_delivery"
+    __table_args__ = (Index("idx_delivery_retry", "status", "next_retry_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    instance_id: Mapped[str] = mapped_column(String(64), index=True)
+    event_id: Mapped[str | None] = mapped_column(String(64))
+    url: Mapped[str] = mapped_column(String(512))
+    request_body: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending/success/failed/dead
+    response_code: Mapped[int | None] = mapped_column(Integer)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(String(512))
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
+
+
 class InstanceEvent(Base):
     """事件审计流水（只追加），dispatched=False 即 Outbox 待投递。"""
 

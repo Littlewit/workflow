@@ -26,6 +26,7 @@ from app.domain.dsl import (
     NodeType,
     ParallelGatewayNode,
     StartNode,
+    WebhookNode,
     WorkflowDSL,
 )
 from app.domain.enums import InstanceStatus, TaskAction, TaskStatus
@@ -389,6 +390,21 @@ class WorkflowEngine:
             if isinstance(node, ParallelGatewayNode):
                 self._route_parallel(state, token, node)
                 return  # 分叉后原 token 已消费；汇合未满则停驻
+
+            if isinstance(node, WebhookNode):
+                # 发后即忘：登记事件后由 Outbox 异步执行 HTTP 调用与重试；
+                # wait_callback（阻塞等待回调）暂未实装
+                if node.wait_callback:
+                    raise WorkflowConfigError(f"Webhook 节点 {node.key} 的 wait_callback 暂未实装")
+                state.events.append(
+                    EngineEvent(
+                        "webhook_invoked", node.key,
+                        {"url": node.url, "payload": node.payload_template,
+                         "secret": node.secret, "maxRetries": node.max_retries},
+                    )
+                )
+                self._walk(state, token)
+                continue
 
             # 其余节点类型（子流程/Webhook/脚本）在后续里程碑分阶段实装
             raise WorkflowConfigError(f"节点类型 {ntype.value} 尚未实装: {token.current_key}")
