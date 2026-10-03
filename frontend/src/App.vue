@@ -23,6 +23,8 @@ const isPlainPage = computed(() => route.path === '/login')
 const collapsed = ref(false) // 侧栏收起态（控制 Logo 显示）
 // 非菜单页（meta.back）顶栏显示返回按钮
 const showBack = computed(() => route.meta.back === true)
+// 显示名：旧会话 localStorage 无 username 时回退用 userId
+const displayName = computed(() => auth.username || auth.userId)
 
 function onLogout() {
   auth.logout()
@@ -101,9 +103,9 @@ function onMenuClick(info: { key: string | number }) {
         <a-dropdown v-if="auth.isLoggedIn" placement="bottomRight">
           <div class="user-chip">
             <a-avatar size="28" style="background: #1677ff">
-              {{ auth.username.charAt(0).toUpperCase() }}
+              {{ displayName.charAt(0).toUpperCase() }}
             </a-avatar>
-            <span class="user-name">{{ auth.username }}</span>
+            <span class="user-name">{{ displayName }}</span>
             <a-tag v-if="auth.isAdmin" color="blue" style="margin-left: 4px">管理员</a-tag>
             <DownOutlined style="font-size: 10px; color: #999" />
           </div>
