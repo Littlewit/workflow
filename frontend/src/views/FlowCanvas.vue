@@ -25,6 +25,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [key: string]
   insertAfter: [prevKey: string, type: 'approval' | 'cc' | 'exclusive_gateway']
+  insertAtEnd: [type: 'approval' | 'cc' | 'exclusive_gateway']
   appendBranch: [gatewayKey: string, type: 'approval' | 'cc' | 'exclusive_gateway']
   openCondition: [gatewayKey: string, branchKey: string, targetName: string]
   remove: [key: string]
@@ -151,7 +152,9 @@ function branchTargetName(b: TreeBranch): string {
             ＋ 添加分支
           </div>
         </div>
-        <div class="flow-plus" @click.stop="emit('insertAfter', item.gatewayKey, 'approval')">
+        <!-- 泳道出口 + 号：视觉上位于分支块之后/结束之前，
+             语义为"在流程结束前插入"（而非落入某个条件分支） -->
+        <div class="flow-plus" @click.stop="emit('insertAtEnd', 'approval')">
           <span>＋</span>
         </div>
       </template>

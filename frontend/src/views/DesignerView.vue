@@ -241,6 +241,7 @@ function onImportConfirm() {
           :depth="0"
           @select="(k: string) => (store.selectedKey = k)"
           @insert-after="(prev: string, type) => store.insertAfter(prev, type)"
+          @insert-at-end="(type) => store.insertBeforeEnd(type)"
           @append-branch="(g: string, type) => store.appendGatewayBranch(g, type)"
           @open-condition="openCondDrawer"
           @remove="(k: string) => store.removeNode(k)"

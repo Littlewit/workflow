@@ -264,6 +264,25 @@ export const useDesignerStore = defineStore('designer', () => {
     })
   }
 
+  /**
+   * 在结束节点之前插入（分支块出口的 ＋ 按钮）：
+   * 将所有指向 end 的入边改写为 X→new→end，新节点位于每条进入结束的路径上。
+   * 语义为"整个流程结束前的最后一步"——不会落入任何条件分支
+   * （此前该按钮复用 insertAfter(gateway)，会把节点错误地插进第一个分支）。
+   */
+  function insertBeforeEnd(type: 'approval' | 'cc' | 'exclusive_gateway') {
+    const key = nextKey(type === 'exclusive_gateway' ? 'gateway' : type)
+    const node = makeNode(key, type)
+    commit(() => {
+      dsl.value.nodes[key] = node
+      const incoming = dsl.value.edges.filter((e) => e.target === 'end')
+      dsl.value.edges = dsl.value.edges.filter((e) => e.target !== 'end')
+      for (const e of incoming) dsl.value.edges.push({ source: e.source, target: key })
+      dsl.value.edges.push({ source: key, target: 'end' })
+      selectedKey.value = key
+    })
+  }
+
   /** 在网关上追加一条分支（gw→new→end），既有分支不动。 */
   function appendGatewayBranch(
     gatewayKey: string,
@@ -344,7 +363,7 @@ export const useDesignerStore = defineStore('designer', () => {
     dsl, definitionId, selectedKey, layout, version,
     canUndo, canRedo,
     commit, undo, redo, load, addNode, removeNode, updateNode, connect, disconnect,
-    insertAfter, appendGatewayBranch,
+    insertAfter, insertBeforeEnd, appendGatewayBranch,
     setBranchCondition, removeGatewayBranch, setDefaultBranch,
   }
 })
