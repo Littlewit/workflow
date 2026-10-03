@@ -5,14 +5,17 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
+import { useRoute } from 'vue-router'
 import LogicFlow from '@logicflow/core'
 import '@logicflow/core/lib/index.css'
 import { useDesignerStore } from '../stores/designer'
 import { toGraphData, bindCanvasEvents } from '../modules/designer/mapping'
+import { registerFlowNodes } from '../modules/designer/customNodes'
 import { validateCanvas } from '../modules/designer/validator'
 import { api } from '../api/workflow'
-import type { ApprovalNode } from '../types/workflow'
+import type { ApprovalNode, WorkflowDSL } from '../types/workflow'
 
+const route = useRoute()
 const store = useDesignerStore()
 const container = ref<HTMLDivElement>()
 const issues = ref<Array<{ level: string; message: string }>>([])
@@ -29,9 +32,26 @@ watch(
   },
 )
 
-onMounted(() => {
+onMounted(async () => {
   if (!container.value) return
   lf = new LogicFlow({ container: container.value, grid: true })
+  registerFlowNodes(lf)
+
+  // 路由带 id：从列表打开既有定义进入编辑
+  const definitionId = route.params.id as string | undefined
+  if (definitionId) {
+    const detail = await api.getDefinition(definitionId)
+    if (detail.status !== 'draft') {
+      // 已发布定义不可修改：转为"副本草稿"编辑（code 换新避免唯一冲突）
+      message.warning('已发布定义不可直接编辑，已转为副本草稿')
+      const dsl = detail.dsl as WorkflowDSL
+      dsl.code = `${dsl.code}_copy_${Math.random().toString(36).slice(2, 6)}`
+      store.load({ id: '', dsl })
+    } else {
+      store.load({ id: detail.definitionId, dsl: detail.dsl as WorkflowDSL })
+    }
+  }
+
   lf.render(toGraphData(store.dsl, store.layout))
   bindCanvasEvents(lf, {
     onNodeClick: (key) => (store.selectedKey = key),

@@ -83,11 +83,11 @@ export interface WorkflowDSL {
   edges: WfEdge[]
 }
 
-/** 画布节点类型 → LogicFlow 内置形状映射。 */
+/** 画布节点类型 → LogicFlow 自定义节点（审批流风格，见 modules/designer/customNodes.ts）。 */
 export const NODE_SHAPE: Record<string, string> = {
-  start: 'circle',
-  end: 'circle',
-  approval: 'rect',
-  cc: 'rect',
-  exclusive_gateway: 'diamond',
+  start: 'wf-start',
+  end: 'wf-end',
+  approval: 'wf-approval',
+  cc: 'wf-cc',
+  exclusive_gateway: 'wf-gateway',
 }

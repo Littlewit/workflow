@@ -73,7 +73,7 @@ export const api = {
   definitions: () => http.get<DefinitionRow[]>('/definitions'),
 
   getDefinition: (id: string) =>
-    http.get<{ definitionId: string; dsl: WorkflowDSL }>(`/definitions/${id}`),
+    http.get<{ definitionId: string; status: string; dsl: WorkflowDSL }>(`/definitions/${id}`),
 
   createDraft: (dsl: WorkflowDSL, name: string) =>
     http.post<CreateDraftResult>('/definitions', { dsl, name }),
