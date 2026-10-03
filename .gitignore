@@ -12,6 +12,10 @@ venv/
 # 开发用 SQLite 数据库文件
 *.db
 
+# 前端构建产物 / TS 增量缓存
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
 # IDE
 .idea/
 .vscode/*

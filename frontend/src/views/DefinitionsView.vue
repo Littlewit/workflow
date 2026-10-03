@@ -48,6 +48,7 @@ onMounted(refresh)
       :data-source="definitions"
       :loading="loading"
       :pagination="false"
+      :scroll="{ x: 560 }"
       :columns="[
         { title: '编码', dataIndex: 'code' },
         { title: '名称', dataIndex: 'name' },

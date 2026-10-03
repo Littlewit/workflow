@@ -16,7 +16,7 @@ function onLogout() {
   <a-layout style="min-height: 100vh">
     <a-layout-header style="display: flex; gap: 24px; align-items: center">
       <span style="color: #fff; font-weight: 600">通用工作流引擎</span>
-      <a-menu theme="dark" mode="horizontal" style="flex: 1" :selectable="false">
+      <a-menu theme="dark" mode="horizontal" class="app-header-menu" style="flex: 1" :selectable="false">
         <a-menu-item @click="router.push('/definitions')">流程定义</a-menu-item>
         <a-menu-item @click="router.push('/initiate')">发起流程</a-menu-item>
         <a-menu-item @click="router.push('/approval/todo')">我的待办</a-menu-item>

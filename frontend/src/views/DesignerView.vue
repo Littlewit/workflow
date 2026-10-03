@@ -141,7 +141,7 @@ async function onPublish() {
 </script>
 
 <template>
-  <a-layout style="background: #fff; min-height: 560px">
+  <a-layout class="designer-layout" style="background: #fff; min-height: 560px">
     <!-- 调色板 -->
     <a-layout-sider width="180" theme="light" style="border-right: 1px solid #eee">
       <div style="padding: 12px">
@@ -172,7 +172,7 @@ async function onPublish() {
         banner
         style="padding: 4px 12px"
       />
-      <div ref="container" style="height: 480px"></div>
+      <div ref="container" class="designer-canvas" style="height: 480px"></div>
     </a-layout-content>
 
     <!-- 配置面板 -->

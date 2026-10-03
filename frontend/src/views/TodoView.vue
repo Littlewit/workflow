@@ -31,7 +31,13 @@ onMounted(refresh)
 
 <template>
   <a-card title="我的待办">
-    <a-table :data-source="tasks" :loading="loading" row-key="taskId" :pagination="false">
+    <a-table
+      :data-source="tasks"
+      :loading="loading"
+      row-key="taskId"
+      :pagination="false"
+      :scroll="{ x: 560 }"
+    >
       <a-table-column title="任务" data-index="nodeName" />
       <a-table-column title="轮次" data-index="round" />
       <a-table-column title="状态" data-index="status" />

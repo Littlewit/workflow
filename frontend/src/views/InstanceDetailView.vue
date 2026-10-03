@@ -60,6 +60,7 @@ onMounted(async () => {
         row-key="taskId"
         size="small"
         :pagination="false"
+        :scroll="{ x: 560 }"
         :columns="[
           { title: '节点', dataIndex: 'nodeName' },
           { title: '处理人', dataIndex: 'assigneeId' },
