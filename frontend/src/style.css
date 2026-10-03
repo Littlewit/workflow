@@ -2,16 +2,11 @@
 
 /* 小屏：内容区收窄内边距 */
 @media (max-width: 768px) {
-  .ant-layout-content {
+  .app-content {
     padding: 12px !important;
   }
-  .ant-layout-header {
+  .app-header {
     padding: 0 12px !important;
-  }
-  /* 顶栏菜单横向滚动，避免换行溢出 */
-  .app-header-menu {
-    overflow-x: auto;
-    flex: 1;
   }
 }
 
