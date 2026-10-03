@@ -191,7 +191,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
             </div>
           </div>
           <!-- 添加分支：骑在顶部汇聚线中点（与节点间 + 号一致的交互暗示），可选新分支首节点类型 -->
-          <div class="add-wrap">
+          <div class="add-wrap add-anchor-lane">
             <div class="flow-add-branch" @click.stop="toggleMenu('add:' + item.gatewayKey)">
               ＋ 添加分支
             </div>
@@ -243,7 +243,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 /* 进入节点的流向箭头：位于卡片正上方、指向卡片（仅当上游是节点或泳道出口 + 号时）。
    用 border 三角绘制，translate(-50%,-100%) 使箭头底边紧贴卡片顶边，与 + 号下段连线相接。 */
 .flow-node + .flow-node::before,
-.flow-plus + .flow-node::before {
+.add-wrap + .flow-node::before {
   content: ''; position: absolute; top: 0; left: 50%;
   transform: translate(-50%, -100%);
   border: 5px solid transparent;
@@ -292,10 +292,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .flow-plus::after { top: 100%; bottom: -14px; }       /* 下段：补齐 margin-bottom 间隙 */
 .flow-plus:hover { background: #4096ff; }
 
-/* 类型选择菜单：挂在＋号上方的自绘浮层（不依赖 antd 弹层，事件行为可控） */
+/* 类型选择菜单：挂在＋号下方的自绘浮层（不依赖 antd 弹层，事件行为可控）。
+   统一向下弹出：向上弹会被 .flow-scroll 的 overflow 在画布顶部裁剪。 */
 .add-wrap { position: relative; }
+/* 添加分支按钮的定位锚点：绝对定位于 .flow-branches 顶部中点（骑汇聚线），
+   菜单与按钮均以该锚点为定位基准，避免被 .add-wrap 劫持定位 */
+.add-anchor-lane { position: absolute; left: 50%; top: 0; transform: translateX(-50%); z-index: 3; }
 .type-menu {
-  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
   z-index: 60; min-width: 150px; padding: 4px;
   background: #fff; border: 1px solid #e5e6eb; border-radius: 10px;
   box-shadow: 0 6px 20px rgba(0, 21, 41, 0.14);
@@ -342,9 +346,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   min-width: 250px;
 }
 .flow-add-branch {
-  /* 骑在顶部汇聚线中点：既标记汇流点，又与节点间 + 号保持一致的交互暗示 */
-  position: absolute; left: 50%; top: 0; transform: translate(-50%, -50%);
-  z-index: 2; cursor: pointer; color: #1677ff;
+  /* 骑在顶部汇聚线中点：由 .add-anchor-lane 提供水平定位，这里仅上移半个自身高度对准线 */
+  position: static; transform: translateY(-50%);
+  cursor: pointer; color: #1677ff;
   font-size: 12px; padding: 1px 10px; border-radius: 12px;
   background: #fff; border: 1px solid #91caff; white-space: nowrap; user-select: none;
 }
