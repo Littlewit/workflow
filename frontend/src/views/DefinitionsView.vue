@@ -113,7 +113,15 @@ onMounted(refresh)
             <a-button v-if="record.status === 'draft'" size="small" type="primary" @click="edit(record)">
               编辑
             </a-button>
-            <a-button v-else size="small" @click="copyAsDraft(record)">另存副本</a-button>
+            <a-popconfirm
+              v-else
+              title="将复制该流程为一份新的草稿，确认继续？"
+              ok-text="确认复制"
+              cancel-text="取消"
+              @confirm="copyAsDraft(record)"
+            >
+              <a-button size="small">另存副本</a-button>
+            </a-popconfirm>
           </a-space>
         </template>
       </template>
