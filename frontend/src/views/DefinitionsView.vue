@@ -3,6 +3,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { PlusOutlined } from '@ant-design/icons-vue'
 import { api } from '../api/workflow'
 import type { DefinitionRow, WorkflowDSL } from '../types'
 
@@ -42,6 +43,7 @@ onMounted(refresh)
 <template>
   <a-card title="流程定义">
     <a-button type="primary" style="margin-bottom: 16px" @click="router.push('/designer')">
+      <template #icon><PlusOutlined /></template>
       新建流程
     </a-button>
     <a-table

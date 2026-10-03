@@ -31,6 +31,9 @@ onMounted(refresh)
 
 <template>
   <a-card title="我的待办">
+    <template #extra>
+      <a-button size="small" :loading="loading" @click="refresh">刷新</a-button>
+    </template>
     <a-table
       :data-source="tasks"
       :loading="loading"
@@ -39,9 +42,13 @@ onMounted(refresh)
       :scroll="{ x: 560 }"
     >
       <a-table-column title="任务" data-index="nodeName" />
-      <a-table-column title="轮次" data-index="round" />
-      <a-table-column title="状态" data-index="status" />
-      <a-table-column title="操作">
+      <a-table-column title="轮次" data-index="round" width="80" />
+      <a-table-column title="状态" data-index="status" width="100">
+        <template #default="{ record }">
+          <a-tag color="blue">{{ record.status }}</a-tag>
+        </template>
+      </a-table-column>
+      <a-table-column title="操作" width="220">
         <template #default="{ record }">
           <a-space>
             <a-button type="primary" size="small" @click="act(record.taskId, 'approve')">同意</a-button>
@@ -50,6 +57,9 @@ onMounted(refresh)
           </a-space>
         </template>
       </a-table-column>
+      <template #emptyText>
+        <a-empty description="太棒了，没有待办任务 🎉" />
+      </template>
     </a-table>
   </a-card>
 </template>

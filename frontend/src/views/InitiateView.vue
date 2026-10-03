@@ -63,7 +63,7 @@ onMounted(async () => {
 
     <FormRenderer v-if="selectedId" v-model="formData" :schema="formSchema" />
 
-    <a-button type="primary" :loading="submitting" :disabled="!selectedId" @click="onSubmit">
+    <a-button type="primary" size="large" :loading="submitting" :disabled="!selectedId" @click="onSubmit">
       提交申请
     </a-button>
 

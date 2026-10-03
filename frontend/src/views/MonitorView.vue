@@ -4,6 +4,12 @@
  * 管理员可见（后端 RBAC 拦截，前端菜单同样仅管理员展示）。
  */
 import { computed, onMounted, ref } from 'vue'
+import {
+  CheckCircleOutlined,
+  CarryOutOutlined,
+  ClockCircleOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons-vue'
 import { api } from '../api/workflow'
 import { useAuthStore } from '../stores/auth'
 
@@ -24,6 +30,13 @@ const STATUS_LABELS: Record<string, string> = {
   terminated: '已终止',
   canceled: '已撤回',
 }
+const STATUS_COLORS: Record<string, string> = {
+  running: '#1677ff',
+  suspended: '#faad14',
+  completed: '#52c41a',
+  terminated: '#ff4d4f',
+  canceled: '#8c8c8c',
+}
 const TASK_STATUS_COLORS: Record<string, string> = {
   pending: 'blue',
   processing: 'cyan',
@@ -34,6 +47,14 @@ const TASK_STATUS_COLORS: Record<string, string> = {
   timeout_auto: 'orange',
 }
 
+// 统计卡片配置（图标 + 主题色，视觉区分指标）
+const statCards = computed(() => [
+  { title: '运行中实例', value: overview.value?.activeInstances ?? 0, suffix: '', icon: ThunderboltOutlined, color: '#1677ff', bg: '#e6f4ff' },
+  { title: '平均流转时长', value: overview.value?.avgInstanceDurationMs ?? 0, suffix: 'ms', icon: ClockCircleOutlined, color: '#722ed1', bg: '#f9f0ff' },
+  { title: '已完成实例', value: overview.value?.instanceCounts?.['completed'] ?? 0, suffix: '', icon: CheckCircleOutlined, color: '#52c41a', bg: '#f6ffed' },
+  { title: '任务总数', value: Object.values(overview.value?.taskCounts ?? {}).reduce((a, b) => a + b, 0), suffix: '', icon: CarryOutOutlined, color: '#fa8c16', bg: '#fff7e6' },
+])
+
 // 状态分布占比（用于进度条展示）
 const instanceDistribution = computed(() =>
   Object.entries(overview.value?.instanceCounts ?? {}).map(([status, count]) => {
@@ -42,6 +63,7 @@ const instanceDistribution = computed(() =>
       status,
       label: STATUS_LABELS[status] ?? status,
       count,
+      color: STATUS_COLORS[status] ?? '#8c8c8c',
       percent: total ? Math.round((count / total) * 100) : 0,
     }
   }),
@@ -68,62 +90,66 @@ onMounted(async () => {
       show-icon
     />
     <template v-else>
+      <!-- 统计卡片：图标着色 + 数值大字 -->
       <a-row :gutter="16">
-        <a-col :xs="12" :md="6">
-          <a-card><a-statistic title="运行中实例" :value="overview?.activeInstances ?? 0" /></a-card>
-        </a-col>
-        <a-col :xs="12" :md="6">
+        <a-col v-for="card in statCards" :key="card.title" :xs="12" :md="6" style="margin-bottom: 8px">
           <a-card>
-            <a-statistic
-              title="平均流转时长"
-              :value="overview?.avgInstanceDurationMs ?? 0"
-              suffix="ms"
-              :precision="0"
-            />
-          </a-card>
-        </a-col>
-        <a-col :xs="12" :md="6">
-          <a-card>
-            <a-statistic
-              title="实例总数"
-              :value="Object.values(overview?.instanceCounts ?? {}).reduce((a, b) => a + b, 0)"
-            />
-          </a-card>
-        </a-col>
-        <a-col :xs="12" :md="6">
-          <a-card>
-            <a-statistic
-              title="任务总数"
-              :value="Object.values(overview?.taskCounts ?? {}).reduce((a, b) => a + b, 0)"
-            />
+            <div class="stat-card">
+              <div class="stat-icon" :style="{ background: card.bg, color: card.color }">
+                <component :is="card.icon" style="font-size: 22px" />
+              </div>
+              <div class="stat-body">
+                <div class="stat-title">{{ card.title }}</div>
+                <a-statistic
+                  :value="card.value"
+                  :suffix="card.suffix"
+                  :value-style="{ fontSize: '24px', fontWeight: 600, color: card.color }"
+                />
+              </div>
+            </div>
           </a-card>
         </a-col>
       </a-row>
 
-      <a-card title="实例状态分布" style="margin-top: 16px">
-        <div v-for="item in instanceDistribution" :key="item.status" style="margin-bottom: 10px">
-          <div>{{ item.label }}（{{ item.count }}）</div>
-          <a-progress :percent="item.percent" size="small" />
-        </div>
-        <a-empty v-if="!instanceDistribution.length" description="暂无实例数据" />
-      </a-card>
+      <a-row :gutter="16">
+        <!-- 实例状态分布 -->
+        <a-col :xs="24" :md="10" style="margin-bottom: 8px">
+          <a-card title="实例状态分布">
+            <div v-for="item in instanceDistribution" :key="item.status" class="dist-row">
+              <div class="dist-label">{{ item.label }}（{{ item.count }}）</div>
+              <a-progress
+                :percent="item.percent"
+                size="small"
+                :stroke-color="item.color"
+                :format="() => item.percent + '%'"
+              />
+            </div>
+            <a-empty v-if="!instanceDistribution.length" description="暂无实例数据" />
+          </a-card>
+        </a-col>
 
-      <a-card title="节点瓶颈分析（平均停留时长 Top 10）" style="margin-top: 16px">
-        <a-table
-          :data-source="bottlenecks"
-          row-key="nodeName"
-          size="small"
-          :pagination="false"
-          :scroll="{ x: 480 }"
-          :columns="[
-            { title: '节点', dataIndex: 'nodeName' },
-            { title: '已完成任务数', dataIndex: 'count' },
-            { title: '平均停留时长(ms)', dataIndex: 'avgStayMs' },
-          ]"
-        />
-      </a-card>
+        <!-- 节点瓶颈 -->
+        <a-col :xs="24" :md="14" style="margin-bottom: 8px">
+          <a-card title="节点瓶颈分析（平均停留时长 Top 10）">
+            <a-table
+              :data-source="bottlenecks"
+              row-key="nodeName"
+              size="small"
+              :pagination="false"
+              :scroll="{ x: 480 }"
+              :columns="[
+                { title: '节点', dataIndex: 'nodeName' },
+                { title: '已完成任务数', dataIndex: 'count' },
+                { title: '平均停留时长(ms)', dataIndex: 'avgStayMs' },
+              ]"
+            />
+            <a-empty v-if="!bottlenecks.length" description="暂无数据" />
+          </a-card>
+        </a-col>
+      </a-row>
 
-      <a-card title="任务状态分布" style="margin-top: 16px">
+      <!-- 任务状态分布 -->
+      <a-card title="任务状态分布" style="margin-top: 8px">
         <a-space wrap>
           <a-tag
             v-for="(count, status) in overview?.taskCounts ?? {}"
@@ -140,3 +166,31 @@ onMounted(async () => {
     </template>
   </a-spin>
 </template>
+
+<style scoped>
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.stat-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.stat-title {
+  color: #8c8c8c;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.dist-row {
+  margin-bottom: 10px;
+}
+.dist-label {
+  margin-bottom: 2px;
+}
+</style>

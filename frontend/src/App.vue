@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined,
   CarryOutOutlined,
+  ClusterOutlined,
   DashboardOutlined,
   SendOutlined,
 } from '@ant-design/icons-vue'
@@ -34,8 +35,13 @@ function onMenuClick(info: { key: string | number }) {
 
   <a-layout v-else style="height: 100vh">
     <!-- 左侧菜单 -->
-    <a-layout-sider collapsible breakpoint="lg" theme="dark" style="overflow: auto">
-      <div class="app-logo">工作流引擎</div>
+    <a-layout-sider
+      collapsible
+      breakpoint="lg"
+      theme="dark"
+      style="overflow: auto; background: linear-gradient(180deg, #001529 0%, #003a70 100%)"
+    >
+      <div class="app-logo"><ClusterOutlined /> 工作流引擎</div>
       <a-menu
         theme="dark"
         mode="inline"
