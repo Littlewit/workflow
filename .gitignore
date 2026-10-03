@@ -9,6 +9,9 @@ __pycache__/
 venv/
 .env
 
+# 开发用 SQLite 数据库文件
+*.db
+
 # IDE
 .idea/
 .vscode/
