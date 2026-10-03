@@ -225,6 +225,43 @@ async function onPublish() {
     // 错误提示由拦截器统一处理（41001 逐条定位在 details 中）
   }
 }
+
+// ---------- DSL JSON 导入/导出（对标 FlowLong 的 JSON 面板） ----------
+
+/** 导出当前 DSL 为 .json 文件下载。 */
+function onExportJson() {
+  const blob = new Blob([JSON.stringify(store.dsl, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${store.dsl.code || 'workflow'}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const importOpen = ref(false)
+const importText = ref('')
+
+function onImportOpen() {
+  importText.value = ''
+  importOpen.value = true
+}
+
+/** 导入 JSON：本地结构校验后整体替换画布（Pydantic 权威校验在保存/发布时进行）。 */
+function onImportConfirm() {
+  try {
+    const dsl = JSON.parse(importText.value) as WorkflowDSL
+    if (!dsl.code || !dsl.nodes || !dsl.edges) {
+      message.error('JSON 缺少 code/nodes/edges 字段')
+      return
+    }
+    store.load({ id: '', dsl })
+    importOpen.value = false
+    message.success('导入成功（已作为新草稿，保存后生效）')
+  } catch (err) {
+    message.error(`JSON 解析失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+}
 </script>
 
 <template>
@@ -249,6 +286,8 @@ async function onPublish() {
         <a-input v-model:value="store.dsl.name" style="width: 200px" placeholder="流程名称" />
         <a-button type="primary" :loading="saving" @click="onSave">保存草稿</a-button>
         <a-button @click="onPublish">发布</a-button>
+        <a-button @click="onExportJson">导出 JSON</a-button>
+        <a-button @click="onImportOpen">导入 JSON</a-button>
         <span v-if="store.dsl.version" style="color: #999">当前版本 v{{ store.dsl.version }}</span>
       </div>
       <a-alert
@@ -286,6 +325,14 @@ async function onPublish() {
       @save="onCondSave"
       @cancel="condDrawer.open = false"
     />
+
+    <!-- JSON 导入弹窗 -->
+    <a-modal v-model:open="importOpen" title="导入流程 JSON" width="640px" @ok="onImportConfirm">
+      <p style="color: #999; font-size: 12px">
+        粘贴此前导出的流程 JSON，导入后将作为<b>新草稿</b>加载（不覆盖当前画布，确认保存后生效）。
+      </p>
+      <a-textarea v-model:value="importText" :rows="14" placeholder='{ "code": "wf_leave", "nodes": { ... }, "edges": [ ... ] }' />
+    </a-modal>
 
     <!-- 配置面板 -->
     <a-layout-sider width="280" theme="light" style="border-left: 1px solid #eee">
