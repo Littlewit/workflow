@@ -412,6 +412,7 @@ class WorkflowService:
             )).scalars().all()
             return {
                 "instanceId": instance.id,
+                "definitionId": instance.definition_id,
                 "definitionVersion": instance.definition_version,
                 "title": instance.title,
                 "status": instance.status,
