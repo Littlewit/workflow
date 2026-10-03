@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons-vue'
 import { api } from '../api/workflow'
 import { useAuthStore } from '../stores/auth'
+import { TASK_STATUS_META } from '../constants/status'
 
 const auth = useAuthStore()
 const overview = ref<{
@@ -36,15 +37,6 @@ const STATUS_COLORS: Record<string, string> = {
   completed: '#52c41a',
   terminated: '#ff4d4f',
   canceled: '#8c8c8c',
-}
-const TASK_STATUS_COLORS: Record<string, string> = {
-  pending: 'blue',
-  processing: 'cyan',
-  approved: 'green',
-  rejected: 'red',
-  transferred: 'purple',
-  canceled: 'default',
-  timeout_auto: 'orange',
 }
 
 // 统计卡片配置（图标 + 主题色，视觉区分指标）
@@ -154,9 +146,9 @@ onMounted(async () => {
           <a-tag
             v-for="(count, status) in overview?.taskCounts ?? {}"
             :key="status"
-            :color="TASK_STATUS_COLORS[status] ?? 'default'"
+            :color="TASK_STATUS_META[status]?.color ?? 'default'"
           >
-            {{ status }}: {{ count }}
+            {{ TASK_STATUS_META[status]?.label ?? status }}: {{ count }}
           </a-tag>
         </a-space>
         <div v-if="!Object.keys(overview?.taskCounts ?? {}).length" style="text-align: center; padding: 16px 0">

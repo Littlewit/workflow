@@ -5,6 +5,7 @@ import { message } from 'ant-design-vue'
 import { api } from '../api/workflow'
 import type { DefinitionRow, InstanceDetail } from '../api/workflow'
 import type { StartNode } from '../types/workflow'
+import { INSTANCE_STATUS_META } from '../constants/status'
 import FormRenderer from '../components/form-renderer/FormRenderer.vue'
 
 const definitions = ref<DefinitionRow[]>([])
@@ -71,7 +72,7 @@ onMounted(async () => {
       v-if="started"
       status="success"
       title="流程已发起"
-      :sub-title="`实例ID：${started.instanceId}，当前状态：${started.status}`"
+      :sub-title="`实例ID：${started.instanceId}，当前状态：${INSTANCE_STATUS_META[started.status]?.label ?? started.status}`"
     />
   </a-card>
 </template>

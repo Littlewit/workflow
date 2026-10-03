@@ -12,11 +12,16 @@ import type { InstanceDetail } from '../api/workflow'
 import type { WorkflowDSL } from '../types/workflow'
 import { NODE_SHAPE } from '../types/workflow'
 import { registerFlowNodes } from '../modules/designer/customNodes'
+import { INSTANCE_STATUS_META, TASK_STATUS_META } from '../constants/status'
 
 const route = useRoute()
 const detail = ref<InstanceDetail | null>(null)
 const dsl = ref<WorkflowDSL | null>(null)
 const loading = ref(false)
+
+const instanceStatusMeta = computed(() =>
+  detail.value ? (INSTANCE_STATUS_META[detail.value.status] ?? null) : null,
+)
 
 // 从事件流推导已完成节点集合（node_completed 均视为完成）
 const finishedKeys = computed(() => {
@@ -76,22 +81,17 @@ function renderTrace() {
     else if (finishedKeys.value.has(key)) model.setProperties({ state: 'done' })
   }
 }
-
-function taskColor(status: string): string {
-  if (status === 'approved') return 'green'
-  if (status === 'rejected') return 'red'
-  if (status === 'pending') return 'blue'
-  return 'default'
-}
 </script>
 
 <template>
   <a-spin :spinning="loading">
     <a-card :title="`流程追踪：${detail?.title || detail?.instanceId || ''}`">
       <a-space style="margin-bottom: 12px">
+        <a-tag :color="instanceStatusMeta?.color ?? 'default'">
+          {{ instanceStatusMeta?.label ?? detail?.status }}
+        </a-tag>
         <a-tag color="orange">橙色 = 当前停留</a-tag>
         <a-tag>弱化 = 已完成</a-tag>
-        <a-tag>{{ detail?.status }}</a-tag>
       </a-space>
       <div id="trace-canvas" style="height: 380px; border: 1px solid #eee"></div>
 
@@ -101,18 +101,18 @@ function taskColor(status: string): string {
         row-key="taskId"
         size="small"
         :pagination="false"
-        :columns="[
-          { title: '节点', dataIndex: 'nodeName' },
-          { title: '处理人', dataIndex: 'assigneeId' },
-          { title: '状态', dataIndex: 'status' },
-          { title: '轮次', dataIndex: 'round' },
-        ]"
+        :scroll="{ x: 560 }"
       >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.dataIndex === 'status'">
-            <a-tag :color="taskColor(record.status)">{{ record.status }}</a-tag>
+        <a-table-column title="节点" data-index="nodeName" />
+        <a-table-column title="处理人" data-index="assigneeId" />
+        <a-table-column title="状态" data-index="status" width="110">
+          <template #default="{ record }">
+            <a-tag :color="TASK_STATUS_META[record.status]?.color ?? 'default'">
+              {{ TASK_STATUS_META[record.status]?.label ?? record.status }}
+            </a-tag>
           </template>
-        </template>
+        </a-table-column>
+        <a-table-column title="轮次" data-index="round" width="80" />
       </a-table>
     </a-card>
   </a-spin>

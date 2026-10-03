@@ -5,19 +5,9 @@ import { message } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/workflow'
 import type { TaskSummary } from '../api/workflow'
+import { TASK_STATUS_META } from '../constants/status'
 
 const router = useRouter()
-
-// 任务状态 → 中文标签/颜色
-const TASK_STATUS_META: Record<string, { label: string; color: string }> = {
-  pending: { label: '待处理', color: 'blue' },
-  processing: { label: '处理中', color: 'cyan' },
-  approved: { label: '已同意', color: 'green' },
-  rejected: { label: '已驳回', color: 'red' },
-  transferred: { label: '已转办', color: 'purple' },
-  canceled: { label: '已取消', color: 'default' },
-  timeout_auto: { label: '超时处理', color: 'orange' },
-}
 
 const tasks = ref<TaskSummary[]>([])
 const loading = ref(false)

@@ -6,17 +6,11 @@ import { message } from 'ant-design-vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import { api } from '../api/workflow'
 import type { DefinitionRow, WorkflowDSL } from '../types'
+import { DEFINITION_STATUS_META } from '../constants/status'
 
 const router = useRouter()
 const definitions = ref<DefinitionRow[]>([])
 const loading = ref(false)
-
-// 定义状态 → 中文标签/颜色
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  draft: { label: '草稿', color: 'orange' },
-  published: { label: '已发布', color: 'green' },
-  disabled: { label: '已停用', color: 'red' },
-}
 
 async function refresh() {
   loading.value = true
@@ -68,8 +62,8 @@ onMounted(refresh)
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'status'">
-          <a-tag :color="STATUS_META[record.status]?.color ?? 'default'">
-            {{ STATUS_META[record.status]?.label ?? record.status }}
+          <a-tag :color="DEFINITION_STATUS_META[record.status]?.color ?? 'default'">
+            {{ DEFINITION_STATUS_META[record.status]?.label ?? record.status }}
           </a-tag>
         </template>
         <template v-else-if="column.dataIndex === 'action'">
