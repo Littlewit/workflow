@@ -12,11 +12,15 @@ export interface FieldSchema {
   type: 'string' | 'number' | 'boolean'
   title: string
   options?: string[]
+  required?: boolean // 字段级必填（兼容两种写法）
   'x-permission'?: string
 }
 
 const props = defineProps<{
-  schema: { properties?: Record<string, FieldSchema> }
+  schema: {
+    properties?: Record<string, FieldSchema>
+    required?: string[] // JSON Schema 惯例：schema 级必填字段名数组
+  }
   modelValue: Record<string, unknown>
   permissions?: Record<string, string> // 节点级字段权限覆盖
 }>()
@@ -24,6 +28,11 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: Record<string, unknown>] }>()
 
 const fields = computed(() => Object.entries(props.schema.properties ?? {}))
+
+/** 必填判定：字段级 required 或 schema 级 required 数组包含该字段。 */
+function isRequired(key: string, field: FieldSchema): boolean {
+  return field.required === true || (props.schema.required ?? []).includes(key)
+}
 
 function visible(key: string, field: FieldSchema): boolean {
   const perm = props.permissions?.[key] ?? field['x-permission'] ?? 'editable'
@@ -37,12 +46,25 @@ function readonly(key: string, field: FieldSchema): boolean {
 function setValue(key: string, value: unknown) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
+
+/** 必填校验：供提交前调用；隐藏字段不参与校验（无填写入口，由后端权限逻辑兜底）。 */
+function validate(): { ok: boolean; missing: string[] } {
+  const missing: string[] = []
+  for (const [key, field] of fields.value) {
+    if (!isRequired(key, field) || !visible(key, field)) continue
+    const v = props.modelValue[key]
+    if (v === undefined || v === null || v === '') missing.push(field.title || key)
+  }
+  return { ok: missing.length === 0, missing }
+}
+
+defineExpose({ validate })
 </script>
 
 <template>
   <a-form layout="vertical">
     <template v-for="[key, field] in fields" :key="key">
-      <a-form-item v-if="visible(key, field)" :label="field.title">
+      <a-form-item v-if="visible(key, field)" :label="field.title" :required="isRequired(key, field)">
         <a-select
           v-if="field.options"
           :disabled="readonly(key, field)"

@@ -9,7 +9,7 @@ import LogicFlow from '@logicflow/core'
 import '@logicflow/core/lib/index.css'
 import { api } from '../api/workflow'
 import type { InstanceDetail } from '../api/workflow'
-import type { WorkflowDSL } from '../types/workflow'
+import type { ExclusiveGatewayNode, WorkflowDSL } from '../types/workflow'
 import { NODE_SHAPE } from '../types/workflow'
 import { registerFlowNodes } from '../modules/designer/customNodes'
 import { INSTANCE_STATUS_META, TASK_STATUS_META } from '../constants/status'
@@ -72,11 +72,26 @@ function renderTrace() {
     x += 170
     return { id: n.key, type: NODE_SHAPE[n.type] ?? 'wf-approval', ...pos, text: n.name }
   })
-  const edges = dsl.value.edges.map((e) => ({
-    sourceNodeId: e.source,
-    targetNodeId: e.target,
-    type: 'polyline',
-  }))
+  const edges = dsl.value.edges.map((e) => {
+    // 网关出边在线上标注分支条件（默认分支/超长条件截断），便于对照流转路径
+    const src = dsl.value!.nodes[e.source]
+    let text: string | undefined
+    if (src?.type === 'exclusive_gateway' && e.branch_key) {
+      const gw = src as ExclusiveGatewayNode
+      if (e.branch_key === gw.default_branch_key) {
+        text = '默认'
+      } else {
+        const cond = gw.branches.find((b) => b.branch_key === e.branch_key)?.condition ?? ''
+        text = cond ? (cond.length > 16 ? `${cond.slice(0, 16)}…` : cond) : '未设置条件'
+      }
+    }
+    return {
+      sourceNodeId: e.source,
+      targetNodeId: e.target,
+      type: 'polyline',
+      ...(text ? { text } : {}),
+    }
+  })
   lf.render({ nodes, edges })
 
   // 运行态高亮：properties.state 驱动自定义节点样式
@@ -92,6 +107,9 @@ function renderTrace() {
 <template>
   <a-spin :spinning="loading">
     <a-card :title="`流程追踪：${detail?.title || detail?.instanceId || ''}`">
+      <template #extra>
+        <a-button size="small" :loading="loading" @click="load">刷新</a-button>
+      </template>
       <a-space style="margin-bottom: 12px">
         <a-tag :color="instanceStatusMeta?.color ?? 'default'">
           {{ instanceStatusMeta?.label ?? detail?.status }}

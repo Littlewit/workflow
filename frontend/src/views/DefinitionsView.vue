@@ -19,6 +19,9 @@ const loading = ref(false)
 // 查看预览弹窗状态
 const viewState = reactive({ open: false, name: '', dsl: null as WorkflowDSL | null })
 const viewCanvas = ref<HTMLDivElement>()
+// LogicFlow 实例复用：弹窗不销毁 DOM（去掉了 destroy-on-close），
+// 重复打开只重渲染，避免每次 new 实例造成旧实例与游离 DOM 的内存滞留
+let previewLf: LogicFlow | null = null
 
 async function refresh() {
   loading.value = true
@@ -44,8 +47,11 @@ async function view(row: DefinitionRow) {
   await nextTick()
   const el = viewCanvas.value
   if (!el || !viewState.dsl) return
-  const lf = new LogicFlow({ container: el, grid: true, isSilentMode: true })
-  registerFlowNodes(lf)
+  if (!previewLf) {
+    previewLf = new LogicFlow({ container: el, grid: true, isSilentMode: true })
+    registerFlowNodes(previewLf)
+  }
+  const lf = previewLf
   // 按节点声明顺序从左到右平铺（修复：此前缺少 x 递增导致全部节点重叠）
   const nodes = Object.values(viewState.dsl.nodes).map((n, i) => ({
     id: n.key,
@@ -132,7 +138,6 @@ onMounted(refresh)
       :title="`流程预览：${viewState.name}`"
       width="860px"
       :footer="null"
-      destroy-on-close
     >
       <template v-if="viewState.dsl">
         <div ref="viewCanvas" style="height: 400px; border: 1px solid #eee; border-radius: 8px"></div>

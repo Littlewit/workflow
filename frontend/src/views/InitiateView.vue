@@ -13,10 +13,11 @@ import FormRenderer from '../components/form-renderer/FormRenderer.vue'
 
 const definitions = ref<DefinitionRow[]>([])
 const selectedId = ref('')
-const formSchema = ref<{ properties?: Record<string, never> }>({})
+const formSchema = ref<{ properties?: Record<string, never>; required?: string[] }>({})
 const formData = ref<Record<string, unknown>>({})
 const submitting = ref(false)
 const started = ref<InstanceDetail | null>(null)
+const formRef = ref<InstanceType<typeof FormRenderer> | null>(null)
 
 const published = computed(() => definitions.value.filter((d) => d.status === 'published'))
 const selected = computed(() => published.value.find((d) => d.definitionId === selectedId.value))
@@ -34,6 +35,12 @@ async function onSelect(id: string) {
 
 async function onSubmit() {
   if (!selected.value) return
+  // 提交前必填校验（星号标识由 FormRenderer 渲染）
+  const check = formRef.value?.validate()
+  if (check && !check.ok) {
+    message.warning(`请填写必填项：${check.missing.join('、')}`)
+    return
+  }
   submitting.value = true
   try {
     const data = await api.startInstance({
@@ -86,7 +93,7 @@ onMounted(async () => {
     <!-- 右侧：发起表单 / 提交成功 -->
     <a-col :xs="24" :md="16" :lg="17" style="margin-bottom: 8px">
       <a-card v-if="selected" :title="`发起：${selected.name}`">
-        <FormRenderer v-model="formData" :schema="formSchema" />
+        <FormRenderer ref="formRef" v-model="formData" :schema="formSchema" />
         <div style="margin-top: 16px">
           <a-button type="primary" size="large" :loading="submitting" @click="onSubmit">
             提交申请

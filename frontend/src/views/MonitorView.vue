@@ -40,10 +40,18 @@ const STATUS_COLORS: Record<string, string> = {
   canceled: '#8c8c8c',
 }
 
+/** 毫秒时长格式化：自动选择 ms / s / min 档位（监控卡片与瓶颈表共用）。 */
+function fmtDuration(ms: number | null | undefined): string {
+  if (ms == null) return '-'
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`
+  return `${(ms / 60000).toFixed(1)} min`
+}
+
 // 统计卡片配置（图标 + 主题色，视觉区分指标）
 const statCards = computed(() => [
   { title: '运行中实例', value: overview.value?.activeInstances ?? 0, suffix: '', icon: ThunderboltOutlined, color: '#1677ff', bg: '#e6f4ff' },
-  { title: '平均流转时长', value: overview.value?.avgInstanceDurationMs ?? 0, suffix: 'ms', icon: ClockCircleOutlined, color: '#722ed1', bg: '#f9f0ff' },
+  { title: '平均流转时长', value: fmtDuration(overview.value?.avgInstanceDurationMs), suffix: '', icon: ClockCircleOutlined, color: '#722ed1', bg: '#f9f0ff' },
   { title: '已完成实例', value: overview.value?.instanceCounts?.['completed'] ?? 0, suffix: '', icon: CheckCircleOutlined, color: '#52c41a', bg: '#f6ffed' },
   { title: '任务总数', value: Object.values(overview.value?.taskCounts ?? {}).reduce((a, b) => a + b, 0), suffix: '', icon: CarryOutOutlined, color: '#fa8c16', bg: '#fff7e6' },
 ])
@@ -134,9 +142,15 @@ onMounted(async () => {
               :columns="[
                 { title: '节点', dataIndex: 'nodeName' },
                 { title: '已完成任务数', dataIndex: 'count' },
-                { title: '平均停留时长(ms)', dataIndex: 'avgStayMs' },
+                { title: '平均停留时长', dataIndex: 'avgStayMs' },
               ]"
-            />
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.dataIndex === 'avgStayMs'">
+                  {{ fmtDuration(record.avgStayMs) }}
+                </template>
+              </template>
+            </a-table>
             <a-empty v-if="!bottlenecks.length" description="暂无数据" />
           </a-card>
         </a-col>
