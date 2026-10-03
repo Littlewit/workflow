@@ -2,6 +2,12 @@
 /** 全局布局：登录页全屏独立，其余页面为左侧菜单 + 顶栏 + 内容区。 */
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {
+  AppstoreOutlined,
+  CarryOutOutlined,
+  DashboardOutlined,
+  SendOutlined,
+} from '@ant-design/icons-vue'
 import { useAuthStore } from './stores/auth'
 
 const route = useRoute()
@@ -36,10 +42,22 @@ function onMenuClick(info: { key: string | number }) {
         :selected-keys="[route.path]"
         @click="onMenuClick"
       >
-        <a-menu-item key="/definitions">流程定义</a-menu-item>
-        <a-menu-item key="/initiate">发起流程</a-menu-item>
-        <a-menu-item key="/approval/todo">我的待办</a-menu-item>
-        <a-menu-item v-if="auth.isAdmin" key="/monitor">监控看板</a-menu-item>
+        <a-menu-item key="/definitions">
+          <template #icon><AppstoreOutlined /></template>
+          流程定义
+        </a-menu-item>
+        <a-menu-item key="/initiate">
+          <template #icon><SendOutlined /></template>
+          发起流程
+        </a-menu-item>
+        <a-menu-item key="/approval/todo">
+          <template #icon><CarryOutOutlined /></template>
+          我的待办
+        </a-menu-item>
+        <a-menu-item v-if="auth.isAdmin" key="/monitor">
+          <template #icon><DashboardOutlined /></template>
+          监控看板
+        </a-menu-item>
       </a-menu>
     </a-layout-sider>
 
