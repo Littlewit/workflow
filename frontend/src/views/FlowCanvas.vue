@@ -85,6 +85,16 @@ function branchTargetName(b: TreeBranch): string {
   if (!first) return b.branchKey
   return first.kind === 'node' ? nodeName(first.key) : nodeName(first.gatewayKey)
 }
+
+// ---------- 插入节点类型选择（＋号弹出菜单） ----------
+
+type AddType = 'approval' | 'cc' | 'exclusive_gateway'
+
+/** 生成 antd Menu 点击处理器：把菜单 key（节点类型）转译后交给对应的插入动作。
+ *  模板表达式不支持对象类型注解/as 断言，故在此适配。 */
+function onAddMenu(run: (t: AddType) => void) {
+  return ({ key }: { key: string | number }) => run(String(key) as AddType)
+}
 </script>
 <template>
   <div class="flow-canvas">
@@ -105,9 +115,19 @@ function branchTargetName(b: TreeBranch): string {
               <div class="flow-card-meta">{{ assigneeSummary(item.key) }}</div>
             </div>
           </div>
-          <div class="flow-plus" title="插入节点" @click.stop="emit('insertAfter', item.key, 'approval')">
-            <span>＋</span>
-          </div>
+          <!-- 插入节点：点击弹出类型选择（审批/抄送/条件分支） -->
+          <a-dropdown :trigger="['click']" placement="top">
+            <div class="flow-plus" title="插入节点">
+              <span>＋</span>
+            </div>
+            <template #overlay>
+              <a-menu @click="onAddMenu((t) => emit('insertAfter', item.key, t))">
+                <a-menu-item key="approval"><AuditOutlined /> 审批节点</a-menu-item>
+                <a-menu-item key="cc"><MailOutlined /> 抄送节点</a-menu-item>
+                <a-menu-item key="exclusive_gateway"><BranchesOutlined /> 条件分支</a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
         </div>
       </template>
 
@@ -140,23 +160,40 @@ function branchTargetName(b: TreeBranch): string {
                 :dsl="dsl"
                 :depth="(depth ?? 0) + 1"
                 @select="(k: string) => emit('select', k)"
-                @insert-after="(prev: string) => emit('insertAfter', prev, 'approval')"
-                @append-branch="(g: string) => emit('appendBranch', g, 'approval')"
+                @insert-after="(prev: string, t: 'approval' | 'cc' | 'exclusive_gateway') => emit('insertAfter', prev, t)"
+                @insert-at-end="(t: 'approval' | 'cc' | 'exclusive_gateway') => emit('insertAtEnd', t)"
+                @append-branch="(g: string, t: 'approval' | 'cc' | 'exclusive_gateway') => emit('appendBranch', g, t)"
                 @open-condition="(g: string, bk: string, tn: string) => emit('openCondition', g, bk, tn)"
                 @remove="(k: string) => emit('remove', k)"
               />
             </div>
           </div>
-          <!-- 添加分支：骑在顶部汇聚线中点（与节点间 + 号一致的交互暗示） -->
-          <div class="flow-add-branch" @click.stop="emit('appendBranch', item.gatewayKey, 'approval')">
-            ＋ 添加分支
-          </div>
+          <!-- 添加分支：骑在顶部汇聚线中点（与节点间 + 号一致的交互暗示），可选新分支首节点类型 -->
+          <a-dropdown :trigger="['click']" placement="top">
+            <div class="flow-add-branch">＋ 添加分支</div>
+            <template #overlay>
+              <a-menu @click="onAddMenu((t) => emit('appendBranch', item.gatewayKey, t))">
+                <a-menu-item key="approval"><AuditOutlined /> 审批节点</a-menu-item>
+                <a-menu-item key="cc"><MailOutlined /> 抄送节点</a-menu-item>
+                <a-menu-item key="exclusive_gateway"><BranchesOutlined /> 条件分支</a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
         </div>
         <!-- 泳道出口 + 号：视觉上位于分支块之后/结束之前，
-             语义为"在流程结束前插入"（而非落入某个条件分支） -->
-        <div class="flow-plus" @click.stop="emit('insertAtEnd', 'approval')">
-          <span>＋</span>
-        </div>
+             语义为"在流程结束前插入"（而非落入某个条件分支），同样可选类型 -->
+        <a-dropdown :trigger="['click']" placement="top">
+          <div class="flow-plus">
+            <span>＋</span>
+          </div>
+          <template #overlay>
+            <a-menu @click="onAddMenu((t) => emit('insertAtEnd', t))">
+              <a-menu-item key="approval"><AuditOutlined /> 审批节点</a-menu-item>
+              <a-menu-item key="cc"><MailOutlined /> 抄送节点</a-menu-item>
+              <a-menu-item key="exclusive_gateway"><BranchesOutlined /> 条件分支</a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
       </template>
     </template>
 
