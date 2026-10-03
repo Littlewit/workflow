@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** 全局布局：登录页全屏独立，其余页面为左侧菜单 + 顶栏 + 内容区。 */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined,
@@ -17,6 +17,7 @@ const auth = useAuthStore()
 
 // 登录页不需要侧边菜单（独立全屏布局）
 const isPlainPage = computed(() => route.path === '/login')
+const collapsed = ref(false) // 侧栏收起态（控制 Logo 显示）
 
 function onLogout() {
   auth.logout()
@@ -36,13 +37,18 @@ function onMenuClick(info: { key: string | number }) {
   <a-layout v-else style="height: 100vh">
     <!-- 左侧菜单 -->
     <a-layout-sider
+      v-model:collapsed="collapsed"
       class="app-sider"
       collapsible
       breakpoint="lg"
       theme="dark"
       style="overflow: auto; background: linear-gradient(180deg, #003a70 0%, #002140 100%)"
     >
-      <div class="app-logo"><ClusterOutlined /> 工作流引擎</div>
+      <!-- 收起时只显示图标，展开时显示完整名称 -->
+      <div class="app-logo" :class="{ collapsed }">
+        <ClusterOutlined />
+        <span v-if="!collapsed">工作流引擎</span>
+      </div>
       <a-menu
         theme="dark"
         mode="inline"
