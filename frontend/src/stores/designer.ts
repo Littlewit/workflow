@@ -99,6 +99,44 @@ export const useDesignerStore = defineStore('designer', () => {
     return `${prefix}_${i}`
   }
 
+  /**
+   * 自动布局（结构变化后调用）：从 start 出发 BFS 得到流程顺序，
+   * 所有节点按序从左到右平铺（间距 170）。end 节点会自然排在最右，
+   * 避免"新增节点与结束节点重叠"。
+   */
+  function autoLayout() {
+    const nodes = dsl.value.nodes
+    const startKey = Object.keys(nodes).find((k) => nodes[k].type === 'start')
+    const out = new Map<string, string[]>()
+    for (const e of dsl.value.edges) {
+      out.set(e.source, [...(out.get(e.source) ?? []), e.target])
+    }
+    // BFS：按流程先后顺序排列
+    const order: string[] = []
+    const seen = new Set<string>()
+    const queue = startKey ? [startKey] : []
+    if (startKey) seen.add(startKey)
+    while (queue.length) {
+      const cur = queue.shift() as string
+      order.push(cur)
+      for (const t of out.get(cur) ?? []) {
+        if (!seen.has(t)) {
+          seen.add(t)
+          queue.push(t)
+        }
+      }
+    }
+    // 不可达节点（孤立/异常草稿）排在末尾，避免丢节点
+    for (const k of Object.keys(nodes)) {
+      if (!seen.has(k)) order.push(k)
+    }
+    const next: Record<string, { x: number; y: number }> = {}
+    order.forEach((k, i) => {
+      next[k] = { x: 120 + i * 170, y: 200 }
+    })
+    layout.value = next
+  }
+
   /** 添加节点：审批/抄送/网关（start/end 由初始 DSL 提供）。 */
   function addNode(type: 'approval' | 'cc' | 'exclusive_gateway') {
     const key = nextKey(type === 'exclusive_gateway' ? 'gateway' : type)
@@ -124,6 +162,7 @@ export const useDesignerStore = defineStore('designer', () => {
       }
       dsl.value.edges.push({ source: key, target: 'end' })
       selectedKey.value = key
+      autoLayout() // 结构变化后自动平铺，避免新节点与结束节点重叠
     })
   }
 
@@ -134,6 +173,7 @@ export const useDesignerStore = defineStore('designer', () => {
       delete dsl.value.nodes[key]
       dsl.value.edges = dsl.value.edges.filter((e) => e.source !== key && e.target !== key)
       if (selectedKey.value === key) selectedKey.value = ''
+      autoLayout() // 删除后同样重新平铺，消除空洞
     })
   }
 
