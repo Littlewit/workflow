@@ -9,6 +9,7 @@ import {
   ClusterOutlined,
   MailOutlined,
 } from '@ant-design/icons-vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ExclusiveGatewayNode, WorkflowDSL } from '../types/workflow'
 import type { FlowItem, GatewayBranch as TreeBranch } from '../modules/designer/tree'
 import { NODE_TYPE_LABELS } from '../constants/status'
@@ -86,15 +87,32 @@ function branchTargetName(b: TreeBranch): string {
   return first.kind === 'node' ? nodeName(first.key) : nodeName(first.gatewayKey)
 }
 
-// ---------- 插入节点类型选择（＋号弹出菜单） ----------
+// ---------- 插入节点类型选择（＋号弹出菜单，自绘实现） ----------
+// 说明：ant-design-vue 的 a-menu 在 Dropdown 弹层中点击事件无法回调到业务层
+// （Menu 内部 click 事件链在此场景下断裂），故改用自绘菜单：原生 button + CSS。
 
 type AddType = 'approval' | 'cc' | 'exclusive_gateway'
 
-/** 生成 antd Menu 点击处理器：把菜单 key（节点类型）转译后交给对应的插入动作。
- *  模板表达式不支持对象类型注解/as 断言，故在此适配。 */
-function onAddMenu(run: (t: AddType) => void) {
-  return ({ key }: { key: string | number }) => run(String(key) as AddType)
+/** 当前展开的类型菜单标识（同一画布同时只展开一个，空串表示全部收起）。 */
+const openMenu = ref('')
+
+/** ＋号点击：切换对应菜单的展开态（stopPropagation 阻止 document 级关闭逻辑）。 */
+function toggleMenu(id: string) {
+  openMenu.value = openMenu.value === id ? '' : id
 }
+
+/** 选中类型：收起菜单并执行对应的插入动作。 */
+function pick(type: AddType, run: (t: AddType) => void) {
+  openMenu.value = ''
+  run(type)
+}
+
+// 点击画布其他区域时收起菜单（递归组件各自注册一次，行为一致）
+function onDocClick() {
+  openMenu.value = ''
+}
+onMounted(() => document.addEventListener('click', onDocClick))
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </script>
 <template>
   <div class="flow-canvas">
@@ -116,18 +134,22 @@ function onAddMenu(run: (t: AddType) => void) {
             </div>
           </div>
           <!-- 插入节点：点击弹出类型选择（审批/抄送/条件分支） -->
-          <a-dropdown :trigger="['click']" placement="top">
-            <div class="flow-plus" title="插入节点">
+          <div class="add-wrap">
+            <div class="flow-plus" title="插入节点" @click.stop="toggleMenu('node:' + item.key)">
               <span>＋</span>
             </div>
-            <template #overlay>
-              <a-menu @click="onAddMenu((t) => emit('insertAfter', item.key, t))">
-                <a-menu-item key="approval"><AuditOutlined /> 审批节点</a-menu-item>
-                <a-menu-item key="cc"><MailOutlined /> 抄送节点</a-menu-item>
-                <a-menu-item key="exclusive_gateway"><BranchesOutlined /> 条件分支</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
+            <div v-if="openMenu === 'node:' + item.key" class="type-menu" @click.stop>
+              <button class="type-item" @click="pick('approval', (t) => emit('insertAfter', item.key, t))">
+                <AuditOutlined /> 审批节点
+              </button>
+              <button class="type-item" @click="pick('cc', (t) => emit('insertAfter', item.key, t))">
+                <MailOutlined /> 抄送节点
+              </button>
+              <button class="type-item" @click="pick('exclusive_gateway', (t) => emit('insertAfter', item.key, t))">
+                <BranchesOutlined /> 条件分支
+              </button>
+            </div>
+          </div>
         </div>
       </template>
 
@@ -169,31 +191,41 @@ function onAddMenu(run: (t: AddType) => void) {
             </div>
           </div>
           <!-- 添加分支：骑在顶部汇聚线中点（与节点间 + 号一致的交互暗示），可选新分支首节点类型 -->
-          <a-dropdown :trigger="['click']" placement="top">
-            <div class="flow-add-branch">＋ 添加分支</div>
-            <template #overlay>
-              <a-menu @click="onAddMenu((t) => emit('appendBranch', item.gatewayKey, t))">
-                <a-menu-item key="approval"><AuditOutlined /> 审批节点</a-menu-item>
-                <a-menu-item key="cc"><MailOutlined /> 抄送节点</a-menu-item>
-                <a-menu-item key="exclusive_gateway"><BranchesOutlined /> 条件分支</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
+          <div class="add-wrap">
+            <div class="flow-add-branch" @click.stop="toggleMenu('add:' + item.gatewayKey)">
+              ＋ 添加分支
+            </div>
+            <div v-if="openMenu === 'add:' + item.gatewayKey" class="type-menu" @click.stop>
+              <button class="type-item" @click="pick('approval', (t) => emit('appendBranch', item.gatewayKey, t))">
+                <AuditOutlined /> 审批节点
+              </button>
+              <button class="type-item" @click="pick('cc', (t) => emit('appendBranch', item.gatewayKey, t))">
+                <MailOutlined /> 抄送节点
+              </button>
+              <button class="type-item" @click="pick('exclusive_gateway', (t) => emit('appendBranch', item.gatewayKey, t))">
+                <BranchesOutlined /> 条件分支
+              </button>
+            </div>
+          </div>
         </div>
         <!-- 泳道出口 + 号：视觉上位于分支块之后/结束之前，
              语义为"在流程结束前插入"（而非落入某个条件分支），同样可选类型 -->
-        <a-dropdown :trigger="['click']" placement="top">
-          <div class="flow-plus">
+        <div class="add-wrap">
+          <div class="flow-plus" @click.stop="toggleMenu('lane:' + item.gatewayKey)">
             <span>＋</span>
           </div>
-          <template #overlay>
-            <a-menu @click="onAddMenu((t) => emit('insertAtEnd', t))">
-              <a-menu-item key="approval"><AuditOutlined /> 审批节点</a-menu-item>
-              <a-menu-item key="cc"><MailOutlined /> 抄送节点</a-menu-item>
-              <a-menu-item key="exclusive_gateway"><BranchesOutlined /> 条件分支</a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
+          <div v-if="openMenu === 'lane:' + item.gatewayKey" class="type-menu" @click.stop>
+            <button class="type-item" @click="pick('approval', (t) => emit('insertAtEnd', t))">
+              <AuditOutlined /> 审批节点
+            </button>
+            <button class="type-item" @click="pick('cc', (t) => emit('insertAtEnd', t))">
+              <MailOutlined /> 抄送节点
+            </button>
+            <button class="type-item" @click="pick('exclusive_gateway', (t) => emit('insertAtEnd', t))">
+              <BranchesOutlined /> 条件分支
+            </button>
+          </div>
+        </div>
       </template>
     </template>
 
@@ -259,6 +291,22 @@ function onAddMenu(run: (t: AddType) => void) {
 .flow-plus::before { top: -14px; height: 14px; }      /* 上段：补齐 margin-top 间隙 */
 .flow-plus::after { top: 100%; bottom: -14px; }       /* 下段：补齐 margin-bottom 间隙 */
 .flow-plus:hover { background: #4096ff; }
+
+/* 类型选择菜单：挂在＋号上方的自绘浮层（不依赖 antd 弹层，事件行为可控） */
+.add-wrap { position: relative; }
+.type-menu {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  z-index: 60; min-width: 150px; padding: 4px;
+  background: #fff; border: 1px solid #e5e6eb; border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 21, 41, 0.14);
+  display: flex; flex-direction: column;
+}
+.type-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border: 0; background: none; border-radius: 8px;
+  cursor: pointer; font-size: 13px; color: #1d2129; white-space: nowrap; text-align: left;
+}
+.type-item:hover { background: #f0f5ff; color: #1677ff; }
 
 /* 分支泳道：外层只做定位容器（宽度 = lane 宽度），保证整体在画布中水平居中 */
 .flow-branches { position: relative; }
