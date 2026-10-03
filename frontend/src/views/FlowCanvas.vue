@@ -21,6 +21,10 @@ const props = defineProps<{
   dsl: WorkflowDSL
   endKey?: string | null
   depth?: number
+  /** 只读模式（流程追踪页）：隐藏全部编辑入口，仅展示结构 */
+  readonly?: boolean
+  /** 节点运行态：key -> active（当前停留）/ done（已完成），追踪页高亮用 */
+  nodeStates?: Record<string, 'active' | 'done'>
 }>()
 
 const emit = defineEmits<{
@@ -87,6 +91,12 @@ function branchTargetName(b: TreeBranch): string {
   return first.kind === 'node' ? nodeName(first.key) : nodeName(first.gatewayKey)
 }
 
+/** 节点运行态样式类（只读追踪用）：state-active / state-done / 空串。 */
+function stateClass(key: string): string {
+  const s = props.nodeStates?.[key]
+  return s ? 'state-' + s : ''
+}
+
 // ---------- 插入节点类型选择（＋号弹出菜单，自绘实现） ----------
 // 说明：ant-design-vue 的 a-menu 在 Dropdown 弹层中点击事件无法回调到业务层
 // （Menu 内部 click 事件链在此场景下断裂），故改用自绘菜单：原生 button + CSS。
@@ -107,11 +117,13 @@ function pick(type: AddType, run: (t: AddType) => void) {
   run(type)
 }
 
-// 点击画布其他区域时收起菜单（递归组件各自注册一次，行为一致）
+// 点击画布其他区域时收起菜单（递归组件各自注册一次，行为一致；只读模式无菜单不注册）
 function onDocClick() {
   openMenu.value = ''
 }
-onMounted(() => document.addEventListener('click', onDocClick))
+onMounted(() => {
+  if (!props.readonly) document.addEventListener('click', onDocClick)
+})
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </script>
 <template>
@@ -119,12 +131,12 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
     <template v-for="item in items" :key="item.kind === 'node' ? item.key : item.gatewayKey">
       <template v-if="item.kind === 'node'">
         <div class="flow-node" @click="emit('select', item.key)">
-          <div class="flow-card" :class="cardClass(item.key)">
+          <div class="flow-card" :class="[cardClass(item.key), stateClass(item.key)]">
             <div class="flow-card-head">
               <span>
                 <component :is="typeIcon(item.key)" style="margin-right: 6px" />{{ typeLabel(item.key) }}
               </span>
-              <a-button type="link" danger size="small" class="card-del" @click.stop="emit('remove', item.key)">
+              <a-button v-if="!readonly" type="link" danger size="small" class="card-del" @click.stop="emit('remove', item.key)">
                 ✕
               </a-button>
             </div>
@@ -133,8 +145,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
               <div class="flow-card-meta">{{ assigneeSummary(item.key) }}</div>
             </div>
           </div>
-          <!-- 插入节点：点击弹出类型选择（审批/抄送/条件分支） -->
-          <div class="add-wrap">
+          <!-- 插入节点：点击弹出类型选择（审批/抄送/条件分支）；只读模式隐藏 -->
+          <div v-if="!readonly" class="add-wrap">
             <div class="flow-plus" title="插入节点" @click.stop="toggleMenu('node:' + item.key)">
               <span>＋</span>
             </div>
@@ -169,8 +181,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
               <span v-if="bi < item.branches.length - 1" class="lane-half half-bottom-right" />
               <div
                 class="flow-branch-tag"
-                :class="{ 'is-default': isDefaultBranch(item.gatewayKey, b.branchKey), unset: !isDefaultBranch(item.gatewayKey, b.branchKey) && !branchCondition(item.gatewayKey, b.branchKey) }"
-                @click="emit('openCondition', item.gatewayKey, b.branchKey, branchTargetName(b))"
+                :class="{ 'is-default': isDefaultBranch(item.gatewayKey, b.branchKey), unset: !isDefaultBranch(item.gatewayKey, b.branchKey) && !branchCondition(item.gatewayKey, b.branchKey), readonly: readonly }"
+                @click="readonly ? undefined : emit('openCondition', item.gatewayKey, b.branchKey, branchTargetName(b))"
               >
                 <span class="flow-branch-priority">{{ priorityLabel(item.gatewayKey, bi) }}</span>
                 <span class="flow-branch-cond">
@@ -181,6 +193,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
                 :items="b.items"
                 :dsl="dsl"
                 :depth="(depth ?? 0) + 1"
+                :readonly="readonly"
+                :node-states="nodeStates"
                 @select="(k: string) => emit('select', k)"
                 @insert-after="(prev: string, t: 'approval' | 'cc' | 'exclusive_gateway') => emit('insertAfter', prev, t)"
                 @insert-at-end="(t: 'approval' | 'cc' | 'exclusive_gateway') => emit('insertAtEnd', t)"
@@ -190,8 +204,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
               />
             </div>
           </div>
-          <!-- 添加分支：骑在顶部汇聚线中点（与节点间 + 号一致的交互暗示），可选新分支首节点类型 -->
-          <div class="add-wrap add-anchor-lane">
+          <!-- 添加分支：骑在顶部汇聚线中点（与节点间 + 号一致的交互暗示），可选新分支首节点类型；只读模式隐藏 -->
+          <div v-if="!readonly" class="add-wrap add-anchor-lane">
             <div class="flow-add-branch" @click.stop="toggleMenu('add:' + item.gatewayKey)">
               ＋ 添加分支
             </div>
@@ -209,8 +223,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
           </div>
         </div>
         <!-- 泳道出口 + 号：视觉上位于分支块之后/结束之前，
-             语义为"在流程结束前插入"（而非落入某个条件分支），同样可选类型 -->
-        <div class="add-wrap">
+             语义为"在流程结束前插入"（而非落入某个条件分支），同样可选类型；只读模式隐藏 -->
+        <div v-if="!readonly" class="add-wrap">
           <div class="flow-plus" @click.stop="toggleMenu('lane:' + item.gatewayKey)">
             <span>＋</span>
           </div>
@@ -230,7 +244,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
     </template>
 
     <div v-if="endKey" class="flow-node">
-      <div class="flow-card type-end">
+      <div class="flow-card type-end" :class="stateClass(endKey)">
         <div class="flow-card-head"><span>结束</span></div>
         <div class="flow-card-body"><div class="flow-card-name">流程结束</div></div>
       </div>
@@ -265,6 +279,17 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .flow-card-body { padding: 10px 12px 12px; background: #fff; }
 .flow-card-name { font-size: 14px; color: #1d2129; }
 .flow-card-meta { font-size: 12px; color: #86909c; margin-top: 4px; }
+/* ---------- 运行态高亮（只读追踪页，nodeStates 驱动） ---------- */
+/* 当前停留：橙色描边 + 光晕（与旧 LogicFlow 追踪语义一致） */
+.flow-card.state-active {
+  border-color: #fa541c; border-width: 2px;
+  box-shadow: 0 0 0 3px rgba(250, 84, 28, 0.18);
+}
+.flow-card.state-active .flow-card-head { box-shadow: inset 0 -3px 0 #fa541c; }
+/* 已完成：整体弱化 */
+.flow-card.state-done { opacity: 0.55; }
+/* 只读模式：条件标签不可点击 */
+.flow-branch-tag.readonly { cursor: default; }
 .type-start .flow-card-head { background: #52c41a; color: #fff; }
 .type-start { border-color: #b7eb8f; }
 .type-end .flow-card-head { background: #595959; color: #fff; }
