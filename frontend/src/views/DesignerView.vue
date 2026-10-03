@@ -223,15 +223,25 @@ function onImportConfirm() {
         <a-button @click="onExportJson">导出 JSON</a-button>
         <a-button @click="onImportOpen">导入 JSON</a-button>
         <span v-if="store.dsl.version" style="color: #999">当前版本 v{{ store.dsl.version }}</span>
+        <!-- 校验结果收纳进工具栏右侧徽标 + 悬浮气泡，不再以告警条挤占画布纵向空间 -->
+        <a-popover v-if="issues.length" title="画布校验结果" placement="bottomRight">
+          <template #content>
+            <div style="max-width: 360px">
+              <div v-for="(issue, i) in issues" :key="i" style="margin-bottom: 4px">
+                <a-tag :color="issue.level === 'error' ? 'error' : 'warning'">
+                  {{ issue.level === 'error' ? '错误' : '提醒' }}
+                </a-tag>
+                {{ issue.message }}
+              </div>
+            </div>
+          </template>
+          <a-badge :count="issues.length" :offset="[-2, 2]" style="margin-left: auto">
+            <a-button size="small" :danger="issues.some((i) => i.level === 'error')">
+              校验
+            </a-button>
+          </a-badge>
+        </a-popover>
       </div>
-      <a-alert
-        v-for="(issue, i) in issues"
-        :key="i"
-        :type="issue.level === 'error' ? 'error' : 'warning'"
-        :message="issue.message"
-        banner
-        style="padding: 4px 12px"
-      />
       <!-- 纵向流程画布（自研 FlowLong 风格） -->
       <div class="flow-scroll">
         <FlowCanvas
