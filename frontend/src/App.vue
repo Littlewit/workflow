@@ -36,6 +36,7 @@ function onMenuClick(info: { key: string | number }) {
   <a-layout v-else style="height: 100vh">
     <!-- 左侧菜单 -->
     <a-layout-sider
+      class="app-sider"
       collapsible
       breakpoint="lg"
       theme="dark"
@@ -110,5 +111,13 @@ function onMenuClick(info: { key: string | number }) {
   .app-content {
     padding: 12px;
   }
+}
+
+/* 菜单背景透明，透出侧栏渐变；选中项改为品牌蓝实底 */
+.app-sider :deep(.ant-menu) {
+  background: transparent;
+}
+.app-sider :deep(.ant-menu-item-selected) {
+  background: #1677ff;
 }
 </style>
