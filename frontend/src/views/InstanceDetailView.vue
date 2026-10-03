@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 实例详情（T6.5 MVP）：任务列表 + 事件时间线；流程图高亮在后续小步交付。 */
+/** 实例详情：任务列表（状态/动作中文化）+ 事件时间线（本地化时间）。 */
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/workflow'
@@ -10,6 +10,38 @@ const router = useRouter()
 const detail = ref<InstanceDetail | null>(null)
 const loading = ref(false)
 
+// 实例状态 → 中文标签/颜色
+const INSTANCE_STATUS_META: Record<string, { label: string; color: string }> = {
+  running: { label: '运行中', color: 'processing' },
+  suspended: { label: '已暂停', color: 'warning' },
+  completed: { label: '已完成', color: 'success' },
+  terminated: { label: '已终止', color: 'error' },
+  canceled: { label: '已撤回', color: 'default' },
+}
+
+// 任务状态 → 中文标签/颜色
+const TASK_STATUS_META: Record<string, { label: string; color: string }> = {
+  pending: { label: '待处理', color: 'blue' },
+  processing: { label: '处理中', color: 'cyan' },
+  approved: { label: '已同意', color: 'green' },
+  rejected: { label: '已驳回', color: 'red' },
+  transferred: { label: '已转办', color: 'purple' },
+  canceled: { label: '已取消', color: 'default' },
+  timeout_auto: { label: '超时处理', color: 'orange' },
+}
+
+// 审批动作 → 中文（空值显示 "-"）
+const ACTION_LABELS: Record<string, string> = {
+  approve: '同意',
+  reject: '驳回',
+  transfer: '转办',
+  delegate: '委托',
+  add_sign: '加签',
+  auto_approve: '系统同意',
+  auto_reject: '系统驳回',
+}
+
+// 事件类型 → 中文
 const EVENT_LABELS: Record<string, string> = {
   workflow_started: '发起',
   node_entered: '进入节点',
@@ -28,6 +60,16 @@ const EVENT_LABELS: Record<string, string> = {
 
 function label(type: string): string {
   return EVENT_LABELS[type] ?? type
+}
+
+/** ISO 时间 → 本地可读格式（无效/空值显示 "-"）。 */
+function fmtTime(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '-'
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 onMounted(async () => {
@@ -49,9 +91,15 @@ onMounted(async () => {
         </a-button>
       </template>
       <a-descriptions size="small" :column="3" style="margin-bottom: 16px">
-        <a-descriptions-item label="状态">{{ detail.status }}</a-descriptions-item>
+        <a-descriptions-item label="状态">
+          <a-badge
+            :status="(INSTANCE_STATUS_META[detail.status]?.color as 'processing') ?? 'default'"
+            :text="INSTANCE_STATUS_META[detail.status]?.label ?? detail.status"
+          />
+        </a-descriptions-item>
         <a-descriptions-item label="发起人">{{ detail.initiatorId }}</a-descriptions-item>
-        <a-descriptions-item label="开始时间">{{ detail.startedAt ?? '-' }}</a-descriptions-item>
+        <a-descriptions-item label="开始时间">{{ fmtTime(detail.startedAt) }}</a-descriptions-item>
+        <a-descriptions-item label="结束时间">{{ fmtTime(detail.finishedAt) }}</a-descriptions-item>
       </a-descriptions>
 
       <h4>任务</h4>
@@ -60,22 +108,31 @@ onMounted(async () => {
         row-key="taskId"
         size="small"
         :pagination="false"
-        :scroll="{ x: 560 }"
-        :columns="[
-          { title: '节点', dataIndex: 'nodeName' },
-          { title: '处理人', dataIndex: 'assigneeId' },
-          { title: '状态', dataIndex: 'status' },
-          { title: '动作', dataIndex: 'action' },
-          { title: '轮次', dataIndex: 'round' },
-        ]"
-      />
+        :scroll="{ x: 620 }"
+      >
+        <a-table-column title="节点" data-index="nodeName" />
+        <a-table-column title="处理人" data-index="assigneeId" />
+        <a-table-column title="状态" data-index="status" width="100">
+          <template #default="{ record }">
+            <a-tag :color="TASK_STATUS_META[record.status]?.color ?? 'default'">
+              {{ TASK_STATUS_META[record.status]?.label ?? record.status }}
+            </a-tag>
+          </template>
+        </a-table-column>
+        <a-table-column title="动作" data-index="action" width="90">
+          <template #default="{ record }">
+            {{ record.action ? (ACTION_LABELS[record.action] ?? record.action) : '-' }}
+          </template>
+        </a-table-column>
+        <a-table-column title="轮次" data-index="round" width="70" />
+      </a-table>
 
       <h4 style="margin-top: 16px">时间线</h4>
       <a-timeline>
-        <a-timeline-item v-for="e in detail.timeline" :key="e.eventId">
+        <a-timeline-item v-for="e in detail.timeline" :key="e.eventId" :color="e.eventType.includes('rejected') ? 'red' : e.eventType.includes('completed') ? 'green' : 'blue'">
           <b>{{ label(e.eventType) }}</b>
           <span v-if="e.nodeKey" style="color: #999">（{{ e.nodeKey }}）</span>
-          <div style="color: #bbb; font-size: 12px">{{ e.createdAt ?? '' }}</div>
+          <div style="color: #bbb; font-size: 12px">{{ fmtTime(e.createdAt) }}</div>
         </a-timeline-item>
       </a-timeline>
     </a-card>
