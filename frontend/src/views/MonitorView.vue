@@ -119,7 +119,7 @@ onMounted(async () => {
 
       <a-row :gutter="16">
         <!-- 实例状态分布（环形图） -->
-        <a-col :xs="24" :md="10" style="margin-bottom: 8px">
+        <a-col :xs="24" :md="12" style="margin-bottom: 8px">
           <a-card title="实例状态分布">
             <DonutChart
               v-if="instanceDistribution.length"
@@ -130,42 +130,40 @@ onMounted(async () => {
           </a-card>
         </a-col>
 
-        <!-- 节点瓶颈 -->
-        <a-col :xs="24" :md="14" style="margin-bottom: 8px">
-          <a-card title="节点瓶颈分析（平均停留时长 Top 10）">
-            <a-table
-              :data-source="bottlenecks"
-              row-key="nodeName"
-              size="small"
-              :pagination="false"
-              :scroll="{ x: 480 }"
-              :columns="[
-                { title: '节点', dataIndex: 'nodeName' },
-                { title: '已完成任务数', dataIndex: 'count' },
-                { title: '平均停留时长', dataIndex: 'avgStayMs' },
-              ]"
-            >
-              <template #bodyCell="{ column, record }">
-                <template v-if="column.dataIndex === 'avgStayMs'">
-                  {{ fmtDuration(record.avgStayMs) }}
-                </template>
-              </template>
-            </a-table>
-            <a-empty v-if="!bottlenecks.length" description="暂无数据" />
+        <!-- 任务状态分布（环形图）：与实例状态分布同行对照 -->
+        <a-col :xs="24" :md="12" style="margin-bottom: 8px">
+          <a-card title="任务状态分布">
+            <DonutChart
+              v-if="Object.keys(overview?.taskCounts ?? {}).length"
+              :data="taskDistribution"
+              height="240px"
+            />
+            <a-empty v-else description="暂无任务数据" />
           </a-card>
         </a-col>
       </a-row>
 
-      <!-- 任务状态分布（环形图） -->
-      <a-card title="任务状态分布" style="margin-top: 8px">
-        <DonutChart
-          v-if="Object.keys(overview?.taskCounts ?? {}).length"
-          :data="taskDistribution"
-          height="240px"
-        />
-        <div v-if="!Object.keys(overview?.taskCounts ?? {}).length" style="text-align: center; padding: 16px 0">
-          <a-empty description="暂无任务数据" />
-        </div>
+      <!-- 节点瓶颈（独占一行） -->
+      <a-card title="节点瓶颈分析（平均停留时长 Top 10）">
+        <a-table
+          :data-source="bottlenecks"
+          row-key="nodeName"
+          size="small"
+          :pagination="false"
+          :scroll="{ x: 480 }"
+          :columns="[
+            { title: '节点', dataIndex: 'nodeName' },
+            { title: '已完成任务数', dataIndex: 'count' },
+            { title: '平均停留时长', dataIndex: 'avgStayMs' },
+          ]"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.dataIndex === 'avgStayMs'">
+              {{ fmtDuration(record.avgStayMs) }}
+            </template>
+          </template>
+        </a-table>
+        <a-empty v-if="!bottlenecks.length" description="暂无数据" style="padding: 8px 0" />
       </a-card>
     </template>
   </a-spin>
