@@ -93,4 +93,15 @@ export const api = {
 
   getInstance: (instanceId: string) =>
     http.get<InstanceDetail>(`/instances/${instanceId}`),
+
+  statsOverview: () =>
+    http.get<{
+      instanceCounts: Record<string, number>
+      taskCounts: Record<string, number>
+      activeInstances: number
+      avgInstanceDurationMs: number | null
+    }>('/stats/overview'),
+
+  statsBottlenecks: () =>
+    http.get<Array<{ nodeName: string; count: number; avgStayMs: number }>>('/stats/bottlenecks'),
 }

@@ -16,7 +16,7 @@ async function onLogin() {
   loading.value = true
   try {
     const data = await api.login(username.value, password.value)
-    auth.setSession(data.token, data.userId)
+    auth.setSession(data.token, data.userId, data.roles)
     message.success('登录成功')
     router.push('/')
   } finally {

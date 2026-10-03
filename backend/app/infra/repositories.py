@@ -112,6 +112,9 @@ class TaskRepository:
             row.action = t["action"]
             row.counter_sign_group_id = t.get("counter_sign_group_id")
             row.deadline_at = _parse_dt(t.get("deadline_at"))
+            # 终态任务回填完成时间（节点停留时长统计依赖此列）
+            if t["status"] in ("approved", "rejected", "transferred", "timeout_auto") and row.finished_at is None:
+                row.finished_at = datetime.now(timezone.utc)
 
     async def list_todo(self, assignee_id: str) -> list[TaskInstance]:
         """某人的全部待办任务。"""

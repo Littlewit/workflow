@@ -14,6 +14,7 @@ const router = createRouter({
     { path: '/approval/todo', component: () => import('../views/TodoView.vue') },
     { path: '/approval/detail/:id', component: () => import('../views/InstanceDetailView.vue') },
     { path: '/trace/:id', component: () => import('../views/TraceView.vue') },
+    { path: '/monitor', component: () => import('../views/MonitorView.vue') },
     { path: '/initiate', component: () => import('../views/InitiateView.vue') },
   ],
 })

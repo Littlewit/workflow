@@ -5,6 +5,7 @@ from functools import lru_cache
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.application.definition_service import DefinitionService
+from app.application.stats_service import StatsService
 from app.application.workflow_service import WorkflowService
 from app.core.config import get_settings
 
@@ -24,3 +25,8 @@ def get_workflow_service() -> WorkflowService:
 def get_definition_service() -> DefinitionService:
     """流程定义用例服务（FastAPI 依赖，测试可 override）。"""
     return DefinitionService(get_session_factory())
+
+
+def get_stats_service() -> StatsService:
+    """运营统计服务（FastAPI 依赖，测试可 override）。"""
+    return StatsService(get_session_factory())

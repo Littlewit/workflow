@@ -20,6 +20,7 @@ function onLogout() {
         <a-menu-item @click="router.push('/definitions')">流程定义</a-menu-item>
         <a-menu-item @click="router.push('/initiate')">发起流程</a-menu-item>
         <a-menu-item @click="router.push('/approval/todo')">我的待办</a-menu-item>
+        <a-menu-item v-if="auth.isAdmin" @click="router.push('/monitor')">监控看板</a-menu-item>
       </a-menu>
       <a-button v-if="auth.isLoggedIn" type="link" style="color: #fff" @click="onLogout">
         退出（{{ auth.userId }}）
