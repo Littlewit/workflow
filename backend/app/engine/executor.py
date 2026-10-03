@@ -11,7 +11,9 @@ Redis 锁 + 数据库行锁（算法逻辑不变）。
 """
 
 import itertools
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.domain.dsl import (
@@ -22,6 +24,7 @@ from app.domain.dsl import (
     EndNode,
     ExclusiveGatewayNode,
     NodeType,
+    ParallelGatewayNode,
     StartNode,
     WorkflowDSL,
 )
@@ -48,11 +51,13 @@ class EngineTask:
     node_key: str
     node_name: str
     node_type: str = ""  # 节点类型快照（列表展示/审计用）
+    token_id: str = ""  # 所属执行分支（并行分支取消时定位任务）
     assignee_id: str = ""
     status: TaskStatus = TaskStatus.PENDING
     round: int = 1  # 驳回重走时递增
     counter_sign_group_id: str | None = None  # 会签分组
     action: TaskAction | None = None
+    deadline_at: datetime | None = None  # 超时截止时间（None=不限时）
 
 
 @dataclass
@@ -82,6 +87,8 @@ class ExecutionState:
     tokens: dict[str, EngineToken] = field(default_factory=dict)  # tokenId -> token
     events: list[EngineEvent] = field(default_factory=list)
     finished_at_reason: str | None = None  # 终态原因记录
+    # 并行汇合到达记录：joinKey -> 已到达 token id 列表
+    join_arrivals: dict[str, list[str]] = field(default_factory=dict)
 
 
 class WorkflowEngine:
@@ -93,18 +100,27 @@ class WorkflowEngine:
         state = engine.approve(task_id=..., variables={...})
     """
 
-    def __init__(self, dsl: WorkflowDSL, resolvers: ResolverRegistry | None = None) -> None:
+    def __init__(
+        self,
+        dsl: WorkflowDSL,
+        resolvers: ResolverRegistry | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         """初始化引擎。
 
         Args:
             dsl: 流程定义（须为发布版快照）。
             resolvers: 审批人解析注册表；缺省使用内置注册表。
+            clock: 时间源（默认 UTC now；测试可注入固定时钟）。
         """
         self._dsl = dsl
         self._resolvers = resolvers or ResolverRegistry()
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._out_edges: dict[str, list[Edge]] = {}
+        self._in_edges: dict[str, list[Edge]] = {}
         for e in dsl.edges:
             self._out_edges.setdefault(e.source, []).append(e)
+            self._in_edges.setdefault(e.target, []).append(e)
         self._edge_seq = itertools.count(1)  # 任务/事件 ID 生成序号源
 
     # ---------- 对外操作 ----------
@@ -370,7 +386,11 @@ class WorkflowEngine:
                 self._route_exclusive(state, token, node)
                 continue
 
-            # 其余节点类型（并行/子流程/Webhook/脚本）在 M5 分阶段实装
+            if isinstance(node, ParallelGatewayNode):
+                self._route_parallel(state, token, node)
+                return  # 分叉后原 token 已消费；汇合未满则停驻
+
+            # 其余节点类型（子流程/Webhook/脚本）在后续里程碑分阶段实装
             raise WorkflowConfigError(f"节点类型 {ntype.value} 尚未实装: {token.current_key}")
 
     def _walk(self, state: ExecutionState, token: EngineToken) -> None:
@@ -403,6 +423,61 @@ class WorkflowEngine:
             EngineEvent("gateway_routed", gw.key, {"branch": selected, "conditionResult": True})
         )
         token.current_key = edges_by_branch[selected].target
+
+    def _route_parallel(self, state: ExecutionState, token: EngineToken, node: ParallelGatewayNode) -> None:
+        """并行网关：split 分叉克隆 token / join 汇合归并（详细设计 §1.3）。
+
+        AND：全部分支到达后放行；OR：任一到达即放行并取消其余分支。
+        """
+        if node.kind == "split":
+            edges = self._out_edges.get(node.key, [])
+            # 每条出边克隆一个 token，path 继承分叉点之前的路径
+            for e in edges:
+                clone = EngineToken(id=uuid4().hex, current_key=e.target, path=list(token.path))
+                state.tokens[clone.id] = clone
+                self._advance(state, clone)
+            state.tokens.pop(token.id, None)  # 分叉点 token 已消费
+            return
+
+        # ---- join 汇合 ----
+        arrivals = state.join_arrivals.setdefault(node.key, [])
+        arrivals.append(token.id)
+        total_incoming = len(self._in_edges.get(node.key, []))
+
+        if node.join_type == "AND" and len(arrivals) < total_incoming:
+            return  # 等待其余分支（token 停驻在 join 节点）
+
+        # 放行：合并到达分支的路径（按出现顺序去重，保留最长历史）
+        merged_path: list[str] = []
+        merged_tokens = []
+        for tid in arrivals:
+            t = state.tokens.get(tid)
+            if t is None:
+                continue  # AND 场景下到达记录与 token 总是一致；防御 None
+            merged_tokens.append(t)
+            for key in t.path:
+                if key not in merged_path:
+                    merged_path.append(key)
+        merged = EngineToken(id=uuid4().hex, current_key=node.key, path=merged_path)
+        state.tokens[merged.id] = merged
+        for tid in arrivals:
+            state.tokens.pop(tid, None)
+        state.join_arrivals[node.key] = []
+
+        if node.join_type == "OR":
+            # 任一到达即放行：取消其它未到分支的 pending 任务并回收其 token
+            other_ids = [tid for tid in state.tokens if tid not in arrivals and tid != merged.id]
+            for other_id in other_ids:
+                other = state.tokens.get(other_id)
+                if other is None:
+                    continue
+                for t in state.tasks.values():
+                    if t.token_id == other_id and t.status == TaskStatus.PENDING:
+                        self._transition_task(state, t, TaskStatus.CANCELED, None)
+                state.tokens.pop(other_id, None)
+
+        self._walk(state, merged)
+        self._advance(state, merged)
 
     def _evaluate_sync(self, expression: str, state: ExecutionState) -> bool:
         """同步求值条件表达式（内存版引擎）。
@@ -442,7 +517,7 @@ class WorkflowEngine:
             task_id = uuid4().hex
             state.tasks[task_id] = EngineTask(
                 id=task_id, node_key=node.key, node_name=node.name,
-                node_type=node.type.value,
+                node_type=node.type.value, token_id=token.id,
                 assignee_id=str(state.variables.get("$_initiator", "")),
                 round=round_no,
             )
@@ -463,13 +538,17 @@ class WorkflowEngine:
             return
 
         group_id = uuid4().hex if node.counter_sign else None
+        # 超时策略：按配置时长计算截止时间（M5 扫描任务消费）
+        deadline = None
+        if node.timeout_policy:
+            deadline = self._clock() + timedelta(minutes=node.timeout_policy.duration_minutes)
         for assignee in result.assignee_ids:
             task_id = uuid4().hex
             state.tasks[task_id] = EngineTask(
                 id=task_id, node_key=node.key, node_name=node.name,
-                node_type=node.type.value,
+                node_type=node.type.value, token_id=token.id,
                 assignee_id=assignee, counter_sign_group_id=group_id,
-                round=round_no,
+                round=round_no, deadline_at=deadline,
             )
         state.events.append(
             EngineEvent("node_entered", node.key, {"assignees": result.assignee_ids})

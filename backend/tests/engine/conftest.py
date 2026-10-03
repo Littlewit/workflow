@@ -13,6 +13,7 @@ from app.domain.dsl import (
     EndNode,
     ExclusiveGatewayNode,
     Node,
+    ParallelGatewayNode,
     StartNode,
     WorkflowDSL,
 )
@@ -66,3 +67,26 @@ def branch_dsl(condition_true_target: str = "approve_vip") -> WorkflowDSL:
         Edge(source="approve_normal", target="end"),
     ]
     return WorkflowDSL(code="wf_branch", name="分支流程", nodes=nodes, edges=edges)
+
+
+def parallel_dsl(join_type: str = "AND") -> WorkflowDSL:
+    """并行网关 DSL：start -> split -> (pa / pb 两支) -> join(AND|OR) -> end。"""
+    nodes: dict[str, Node] = {
+        "start": StartNode(key="start", name="发起"),
+        "split": ParallelGatewayNode(key="split", name="并行分叉", kind="split"),
+        "pa": approval_node(key="pa", name="分支A审批"),
+        "pb": approval_node(key="pb", name="分支B审批"),
+        "join": ParallelGatewayNode(
+            key="join", name="并行汇合", kind="join", join_type=join_type  # type: ignore[arg-type]
+        ),
+        "end": EndNode(key="end", name="结束"),
+    }
+    edges = [
+        Edge(source="start", target="split"),
+        Edge(source="split", target="pa"),
+        Edge(source="split", target="pb"),
+        Edge(source="pa", target="join"),
+        Edge(source="pb", target="join"),
+        Edge(source="join", target="end"),
+    ]
+    return WorkflowDSL(code="wf_parallel", name="并行流程", nodes=nodes, edges=edges)

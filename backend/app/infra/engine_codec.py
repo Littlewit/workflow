@@ -7,6 +7,7 @@
 """
 
 from dataclasses import asdict
+from datetime import datetime
 
 from app.domain.dsl import WorkflowDSL
 from app.domain.enums import InstanceStatus, TaskAction, TaskStatus
@@ -20,6 +21,7 @@ def serialize_tasks(state: ExecutionState) -> list[dict]:
             **asdict(t),
             "status": t.status.value,
             "action": t.action.value if t.action else None,
+            "deadline_at": t.deadline_at.isoformat() if t.deadline_at else None,
         }
         for t in state.tasks.values()
     ]
@@ -32,6 +34,7 @@ def serialize_state(state: ExecutionState) -> dict:
         "variables": state.variables,
         "tasks": serialize_tasks(state),
         "tokens": [asdict(t) for t in state.tokens.values()],
+        "joinArrivals": state.join_arrivals,
     }
 
 
@@ -42,11 +45,14 @@ def deserialize_state(dsl: WorkflowDSL, instance_id: str, data: dict) -> Executi
             id=t["id"],
             node_key=t["node_key"],
             node_name=t["node_name"],
+            node_type=t.get("node_type", ""),
+            token_id=t.get("token_id", ""),
             assignee_id=t["assignee_id"],
             status=TaskStatus(t["status"]),
             round=t["round"],
             counter_sign_group_id=t.get("counter_sign_group_id"),
             action=TaskAction(t["action"]) if t.get("action") else None,
+            deadline_at=_parse_dt(t.get("deadline_at")),
         )
         for t in data["tasks"]
     }
@@ -61,4 +67,12 @@ def deserialize_state(dsl: WorkflowDSL, instance_id: str, data: dict) -> Executi
         variables=dict(data["variables"]),
         tasks=tasks,
         tokens=tokens,
+        join_arrivals={k: list(v) for k, v in data.get("joinArrivals", {}).items()},
     )
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    """ISO 字符串 → datetime（快照恢复用）。"""
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
