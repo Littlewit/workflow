@@ -11,6 +11,7 @@ import '@logicflow/core/lib/index.css'
 import { useDesignerStore } from '../stores/designer'
 import { toGraphData, bindCanvasEvents } from '../modules/designer/mapping'
 import { registerFlowNodes } from '../modules/designer/customNodes'
+import ConditionDrawer from '../components/ConditionDrawer.vue'
 import { validateCanvas } from '../modules/designer/validator'
 import { api } from '../api/workflow'
 import type { ApprovalNode, ExclusiveGatewayNode, WorkflowDSL } from '../types/workflow'
@@ -22,6 +23,27 @@ const issues = ref<Array<{ level: string; message: string }>>([])
 const saving = ref(false)
 // 节点右键上下文菜单
 const ctx = reactive({ visible: false, x: 0, y: 0, nodeKey: '' })
+// 结构化条件编辑抽屉
+const condDrawer = reactive({ open: false, branchKey: '', branchName: '' })
+const drawerVariables = computed(() =>
+  store.dsl.variables.map((v) => ({ key: v.key, type: v.type as string })),
+)
+const editingBranchCondition = computed(() => {
+  const gw = selectedGateway.value
+  if (!gw) return ''
+  return gw.branches.find((b) => b.branch_key === condDrawer.branchKey)?.condition ?? ''
+})
+
+function openCondDrawer(branchKey: string, branchName: string) {
+  condDrawer.branchKey = branchKey
+  condDrawer.branchName = branchName
+  condDrawer.open = true
+}
+function onCondSave(expr: string) {
+  store.setBranchCondition(store.selectedKey, condDrawer.branchKey, expr)
+  condDrawer.open = false
+  message.success('分支条件已保存')
+}
 // 菜单打开时间戳：原生 contextmenu 冒泡到 window 的同一事件里不能立刻关闭（时序保护）
 let ctxOpenedAt = 0
 let lf: LogicFlow | null = null
@@ -145,7 +167,7 @@ const gatewayBranches = computed(() => {
   if (!gw) return []
   return store.dsl.edges
     .filter((e) => e.source === store.selectedKey && e.branch_key)
-    .map((e) => {
+    .map((e, idx) => {
       const branchKey = e.branch_key as string
       const entry = gw.branches.find((b) => b.branch_key === branchKey)
       return {
@@ -153,13 +175,11 @@ const gatewayBranches = computed(() => {
         targetName: store.dsl.nodes[e.target]?.name ?? e.target,
         isDefault: branchKey === gw.default_branch_key,
         condition: entry?.condition ?? '',
+        priority: idx + 1, // 分支顺序即优先级（排他网关按序求值）
       }
     })
 })
 
-function onBranchConditionChange(branchKey: string, e: Event) {
-  store.setBranchCondition(store.selectedKey, branchKey, (e.target as HTMLInputElement).value)
-}
 const userIdsText = computed({
   get: () => ((selectedApproval.value?.assignee.params['user_ids'] as string[]) ?? []).join(','),
   set: (v: string) => {
@@ -257,6 +277,16 @@ async function onPublish() {
       </div>
     </teleport>
 
+    <!-- 结构化条件编辑抽屉 -->
+    <ConditionDrawer
+      :open="condDrawer.open"
+      :title="`设置分支条件：${condDrawer.branchName}`"
+      :condition="editingBranchCondition"
+      :variables="drawerVariables"
+      @save="onCondSave"
+      @cancel="condDrawer.open = false"
+    />
+
     <!-- 配置面板 -->
     <a-layout-sider width="280" theme="light" style="border-left: 1px solid #eee">
       <div style="padding: 12px" v-if="selectedNode">
@@ -300,7 +330,10 @@ async function onPublish() {
               class="branch-editor"
             >
               <div class="branch-head">
-                <span>→ {{ branch.targetName }}</span>
+                <span>
+                  <a-tag color="orange" style="margin-right: 4px">优先级{{ branch.priority }}</a-tag>
+                  → {{ branch.targetName }}
+                </span>
                 <a-space>
                   <a-tag v-if="branch.isDefault" color="blue">默认</a-tag>
                   <a-button
@@ -314,13 +347,15 @@ async function onPublish() {
                   </a-button>
                 </a-space>
               </div>
-              <a-input
+              <a-button
                 v-if="!branch.isDefault"
                 size="small"
-                :value="branch.condition"
-                placeholder="条件表达式，如 days > 3"
-                @change="(e: Event) => onBranchConditionChange(branch.branchKey, e)"
-              />
+                style="width: 100%; text-align: left"
+                :type="branch.condition ? 'default' : 'dashed'"
+                @click="openCondDrawer(branch.branchKey, branch.targetName)"
+              >
+                {{ branch.condition || '请设置条件' }}
+              </a-button>
               <div v-else style="color: #999; font-size: 12px">全部条件不命中时走此分支</div>
             </div>
             <a-button block size="small" style="margin: 8px 0" @click="store.addNode('approval')">
