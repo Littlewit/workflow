@@ -157,6 +157,21 @@ export const useDesignerStore = defineStore('designer', () => {
     layout.value = next
   }
 
+  /** 按类型构造新节点（审批/抄送/网关）。 */
+  function makeNode(key: string, type: 'approval' | 'cc' | 'exclusive_gateway'): WfNode {
+    if (type === 'approval') {
+      return {
+        key, name: '新审批节点', type,
+        assignee: { mode: 'fixed_list', params: { user_ids: [] } },
+        default_reject_target: null,
+      }
+    }
+    if (type === 'cc') {
+      return { key, name: '抄送', type, assignee: { mode: 'fixed_list', params: { user_ids: [] } } }
+    }
+    return { key, name: '条件判断', type, branches: [], default_branch_key: 'default' }
+  }
+
   /**
    * 添加节点：
    * - 选中了节点 → 插到选中节点之后（普通节点改写其唯一出边形成链；
@@ -165,18 +180,7 @@ export const useDesignerStore = defineStore('designer', () => {
    */
   function addNode(type: 'approval' | 'cc' | 'exclusive_gateway') {
     const key = nextKey(type === 'exclusive_gateway' ? 'gateway' : type)
-    let node: WfNode
-    if (type === 'approval') {
-      node = {
-        key, name: '新审批节点', type,
-        assignee: { mode: 'fixed_list', params: { user_ids: [] } },
-        default_reject_target: null,
-      }
-    } else if (type === 'cc') {
-      node = { key, name: '抄送', type, assignee: { mode: 'fixed_list', params: { user_ids: [] } } }
-    } else {
-      node = { key, name: '条件判断', type, branches: [], default_branch_key: 'default' }
-    }
+    const node = makeNode(key, type)
     commit(() => {
       dsl.value.nodes[key] = node
       const sel = selectedKey.value
@@ -224,6 +228,38 @@ export const useDesignerStore = defineStore('designer', () => {
     if (!(key in dsl.value.nodes)) return
     commit(() => {
       Object.assign(dsl.value.nodes[key], patch)
+    })
+  }
+
+  /** 在指定节点之后插入新节点（纵向画布卡片间的 ＋ 按钮）。 */
+  function insertAfter(prevKey: string, type: 'approval' | 'cc' | 'exclusive_gateway') {
+    if (!(prevKey in dsl.value.nodes)) return
+    const key = nextKey(type === 'exclusive_gateway' ? 'gateway' : type)
+    const node = makeNode(key, type)
+    commit(() => {
+      dsl.value.nodes[key] = node
+      const outEdge = dsl.value.edges.find((e) => e.source === prevKey)
+      const next = outEdge?.target
+      dsl.value.edges = dsl.value.edges.filter((e) => e !== outEdge)
+      dsl.value.edges.push({ source: prevKey, target: key })
+      if (next) dsl.value.edges.push({ source: key, target: next })
+      selectedKey.value = key
+    })
+  }
+
+  /** 在网关上追加一条分支（gw→new→end），既有分支不动。 */
+  function appendGatewayBranch(
+    gatewayKey: string,
+    type: 'approval' | 'cc' | 'exclusive_gateway',
+  ) {
+    if (!(gatewayKey in dsl.value.nodes)) return
+    const key = nextKey(type === 'exclusive_gateway' ? 'gateway' : type)
+    const node = makeNode(key, type)
+    commit(() => {
+      dsl.value.nodes[key] = node
+      dsl.value.edges.push({ source: gatewayKey, target: key })
+      dsl.value.edges.push({ source: key, target: 'end' })
+      selectedKey.value = key
     })
   }
 
@@ -291,6 +327,7 @@ export const useDesignerStore = defineStore('designer', () => {
     dsl, definitionId, selectedKey, layout, version,
     canUndo, canRedo,
     commit, undo, redo, load, addNode, removeNode, updateNode, connect, disconnect,
+    insertAfter, appendGatewayBranch,
     setBranchCondition, removeGatewayBranch, setDefaultBranch,
   }
 })

@@ -3,28 +3,24 @@
  * 流程设计器（T6.2/T6.3）：画布 + 调色板 + 配置面板 + 校验 + Undo/Redo。
  * DSL 为唯一事实源；画布仅负责渲染与坐标采集。
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { useRoute } from 'vue-router'
-import LogicFlow from '@logicflow/core'
-import '@logicflow/core/lib/index.css'
 import { useDesignerStore } from '../stores/designer'
-import { toGraphData, bindCanvasEvents } from '../modules/designer/mapping'
-import { registerFlowNodes } from '../modules/designer/customNodes'
+import { buildFlowTree } from '../modules/designer/tree'
 import ConditionDrawer from '../components/ConditionDrawer.vue'
+import FlowCanvas from './FlowCanvas.vue'
 import { validateCanvas } from '../modules/designer/validator'
 import { api } from '../api/workflow'
-import type { ApprovalNode, ExclusiveGatewayNode, WorkflowDSL } from '../types/workflow'
+import type { ExclusiveGatewayNode, WorkflowDSL } from '../types/workflow'
 
 const route = useRoute()
 const store = useDesignerStore()
-const container = ref<HTMLDivElement>()
 const issues = ref<Array<{ level: string; message: string }>>([])
 const saving = ref(false)
-// 节点右键上下文菜单
-const ctx = reactive({ visible: false, x: 0, y: 0, nodeKey: '' })
+const flowTree = computed(() => buildFlowTree(store.dsl))
 // 结构化条件编辑抽屉
-const condDrawer = reactive({ open: false, branchKey: '', branchName: '' })
+const condDrawer = reactive({ open: false, gatewayKey: '', branchKey: '', branchName: '' })
 const drawerVariables = computed(() =>
   store.dsl.variables.map((v) => ({ key: v.key, type: v.type as string })),
 )
@@ -34,95 +30,18 @@ const editingBranchCondition = computed(() => {
   return gw.branches.find((b) => b.branch_key === condDrawer.branchKey)?.condition ?? ''
 })
 
-function openCondDrawer(branchKey: string, branchName: string) {
+function openCondDrawer(gatewayKey: string, branchKey: string, branchName: string) {
+  // 条件编辑基于网关：选中网关保证写入目标正确
+  store.selectedKey = gatewayKey
+  condDrawer.gatewayKey = gatewayKey
   condDrawer.branchKey = branchKey
   condDrawer.branchName = branchName
   condDrawer.open = true
 }
 function onCondSave(expr: string) {
-  store.setBranchCondition(store.selectedKey, condDrawer.branchKey, expr)
+  store.setBranchCondition(condDrawer.gatewayKey, condDrawer.branchKey, expr)
   condDrawer.open = false
   message.success('分支条件已保存')
-}
-// 菜单打开时间戳：原生 contextmenu 冒泡到 window 的同一事件里不能立刻关闭（时序保护）
-let ctxOpenedAt = 0
-let lf: LogicFlow | null = null
-
-// DSL 结构变化 → 重渲染画布（布局坐标保持用户拖拽结果）
-watch(
-  () => store.version,
-  () => {
-    if (!lf) return
-    lf.render(toGraphData(store.dsl, store.layout))
-    issues.value = validateCanvas(store.dsl)
-  },
-)
-
-onMounted(async () => {
-  if (!container.value) return
-  lf = new LogicFlow({ container: container.value, grid: true })
-  registerFlowNodes(lf)
-
-  // 路由带 id：从列表打开既有定义进入编辑
-  const definitionId = route.params.id as string | undefined
-  if (definitionId) {
-    const detail = await api.getDefinition(definitionId)
-    if (detail.status !== 'draft') {
-      // 已发布定义不可修改：转为"副本草稿"编辑（code 换新避免唯一冲突）
-      message.warning('已发布定义不可直接编辑，已转为副本草稿')
-      const dsl = detail.dsl as WorkflowDSL
-      dsl.code = `${dsl.code}_copy_${Math.random().toString(36).slice(2, 6)}`
-      store.load({ id: '', dsl })
-    } else {
-      store.load({ id: detail.definitionId, dsl: detail.dsl as WorkflowDSL })
-    }
-  }
-
-  lf.render(toGraphData(store.dsl, store.layout))
-  bindCanvasEvents(lf, {
-    onNodeClick: (key) => (store.selectedKey = key),
-    onEdgeConnected: (s, t) => {
-      // 画布拖拽连线 → DSL（坐标回流）
-      const pos = lf?.getGraphData() as { nodes: Array<{ id: string; x: number; y: number }> }
-      for (const n of pos.nodes) store.layout[n.id] = { x: n.x, y: n.y }
-      store.connect(s, t)
-    },
-    onEdgeDeleted: (s, t) => store.disconnect(s, t),
-    onNodeContextMenu: (key, x, y) => {
-      ctx.nodeKey = key
-      ctx.x = x
-      ctx.y = y
-      ctx.visible = true
-      ctxOpenedAt = Date.now()
-    },
-    onBlankContextMenu: () => (ctx.visible = false),
-  })
-  issues.value = validateCanvas(store.dsl)
-  // 全局点击关闭右键菜单
-  window.addEventListener('click', closeCtxMenu)
-  window.addEventListener('contextmenu', onWindowContextmenu)
-})
-
-function closeCtxMenu() {
-  ctx.visible = false
-}
-// 右键点在菜单外（画布空白由 onBlankContextMenu 处理，其它区域在此兜底）。
-// 打开后 150ms 内的 contextmenu 冒泡是"打开菜单"这一事件本身，忽略之。
-function onWindowContextmenu(e: MouseEvent) {
-  if (Date.now() - ctxOpenedAt < 150) return
-  if (!(e.target as HTMLElement)?.closest('.ctx-menu')) closeCtxMenu()
-}
-
-function ctxAdd(type: 'approval' | 'cc' | 'exclusive_gateway') {
-  // 先选中右键的节点，复用"插到选中节点之后"的添加逻辑
-  store.selectedKey = ctx.nodeKey
-  store.addNode(type)
-  closeCtxMenu()
-}
-
-function ctxDelete() {
-  store.removeNode(ctx.nodeKey)
-  closeCtxMenu()
 }
 
 // 快捷键：Ctrl+Z / Ctrl+Shift+Z（T6.3）
@@ -136,25 +55,35 @@ function onKeydown(e: KeyboardEvent) {
     store.redo()
   }
 }
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('click', closeCtxMenu)
-  window.removeEventListener('contextmenu', onWindowContextmenu)
+onMounted(async () => {
+  // 路由带 id：从列表打开既有定义进入编辑
+  const definitionId = route.params.id as string | undefined
+  if (definitionId) {
+    const detail = await api.getDefinition(definitionId)
+    if (detail.status !== 'draft') {
+      message.warning('已发布定义不可直接编辑，已转为副本草稿')
+      const dsl = detail.dsl as WorkflowDSL
+      dsl.code = (dsl.code || 'wf_copy') + '_copy_' + Math.random().toString(36).slice(2, 6)
+      store.load({ id: '', dsl })
+    } else {
+      store.load({ id: detail.definitionId, dsl: detail.dsl as WorkflowDSL })
+    }
+  }
+  issues.value = validateCanvas(store.dsl)
 })
-
-// 画布拖拽后回流坐标（拖拽结束事件）
-async function syncLayout() {
-  if (!lf) return
-  const graph = (await lf.getGraphData()) as { nodes: Array<{ id: string; x: number; y: number }> }
-  for (const n of graph.nodes) store.layout[n.id] = { x: n.x, y: n.y }
-}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 const selectedNode = computed(() =>
   store.selectedKey ? store.dsl.nodes[store.selectedKey] : null,
 )
 const selectedApproval = computed(() =>
-  selectedNode.value?.type === 'approval' ? (selectedNode.value as ApprovalNode) : null,
+  selectedNode.value?.type === 'approval'
+    ? (selectedNode.value as {
+        assignee: { mode: string; params: Record<string, unknown> }
+        counter_sign: 'ALL' | 'ANY' | 'ratio' | null | undefined
+      })
+    : null,
 )
 // 选中的网关节点及其出边（分支条件编辑用）
 const selectedGateway = computed(() =>
@@ -193,7 +122,6 @@ const userIdsText = computed({
 async function onSave() {
   saving.value = true
   try {
-    await syncLayout()
     issues.value = validateCanvas(store.dsl)
     if (issues.value.some((i) => i.level === 'error')) {
       message.error('存在校验错误，请先修复')
@@ -298,23 +226,21 @@ function onImportConfirm() {
         banner
         style="padding: 4px 12px"
       />
-      <div ref="container" class="designer-canvas" style="height: 480px"></div>
-    </a-layout-content>
-
-    <!-- 节点右键上下文菜单 -->
-    <teleport to="body">
-      <div
-        v-if="ctx.visible"
-        class="ctx-menu"
-        :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }"
-      >
-        <div class="ctx-item" @click.stop="ctxAdd('approval')">＋ 审批节点</div>
-        <div class="ctx-item" @click.stop="ctxAdd('cc')">＋ 抄送节点</div>
-        <div class="ctx-item" @click.stop="ctxAdd('exclusive_gateway')">＋ 条件分支</div>
-        <div class="ctx-divider" />
-        <div class="ctx-item danger" @click.stop="ctxDelete()">删除该节点</div>
+      <!-- 纵向流程画布（自研 FlowLong 风格） -->
+      <div class="flow-scroll">
+        <FlowCanvas
+          :items="flowTree.items"
+          :dsl="store.dsl"
+          :end-key="flowTree.endKey"
+          :depth="0"
+          @select="(k: string) => (store.selectedKey = k)"
+          @insert-after="(prev: string, type) => store.insertAfter(prev, type)"
+          @append-branch="(g: string, type) => store.appendGatewayBranch(g, type)"
+          @open-condition="openCondDrawer"
+          @remove="(k: string) => store.removeNode(k)"
+        />
       </div>
-    </teleport>
+    </a-layout-content>
 
     <!-- 结构化条件编辑抽屉 -->
     <ConditionDrawer
@@ -399,7 +325,7 @@ function onImportConfirm() {
                 size="small"
                 style="width: 100%; text-align: left"
                 :type="branch.condition ? 'default' : 'dashed'"
-                @click="openCondDrawer(branch.branchKey, branch.targetName)"
+                @click="openCondDrawer(store.selectedKey, branch.branchKey, branch.targetName)"
               >
                 {{ branch.condition || '请设置条件' }}
               </a-button>
@@ -431,35 +357,10 @@ function onImportConfirm() {
 </template>
 
 <style scoped>
-.ctx-menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: 150px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 21, 41, 0.16);
-  padding: 4px;
-}
-.ctx-item {
-  padding: 7px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.ctx-item:hover {
-  background: #f0f5ff;
-  color: #1677ff;
-}
-.ctx-item.danger {
-  color: #ff4d4f;
-}
-.ctx-item.danger:hover {
-  background: #fff1f0;
-}
-.ctx-divider {
-  height: 1px;
-  background: #f0f0f0;
-  margin: 4px 0;
+.flow-scroll {
+  max-height: calc(100vh - 200px);
+  overflow: auto;
+  padding: 16px 0 40px;
 }
 .branch-editor {
   border: 1px solid #f0f0f0;
