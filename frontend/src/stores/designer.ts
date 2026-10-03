@@ -169,9 +169,17 @@ export const useDesignerStore = defineStore('designer', () => {
       if (sel && sel in dsl.value.nodes && sel !== key) {
         const selNode = dsl.value.nodes[sel]
         if (selNode.type === 'exclusive_gateway') {
-          // 网关：追加新分支边（不动既有分支），新节点连回 end → 可连续添加多个
-          dsl.value.edges.push({ source: sel, target: key })
-          dsl.value.edges.push({ source: key, target: 'end' })
+          const outEdges = dsl.value.edges.filter((e) => e.source === sel)
+          // 初始态（网关直连 end）：改写为 gw→new→end，让新节点真正落在主路径上
+          if (outEdges.length === 1 && outEdges[0].target === 'end') {
+            dsl.value.edges = dsl.value.edges.filter((e) => e !== outEdges[0])
+            dsl.value.edges.push({ source: sel, target: key })
+            dsl.value.edges.push({ source: key, target: 'end' })
+          } else {
+            // 已有真实分支：追加新分支边，可连续添加多个
+            dsl.value.edges.push({ source: sel, target: key })
+            dsl.value.edges.push({ source: key, target: 'end' })
+          }
         } else {
           // 普通节点：唯一出边 sel→X 改写为 sel→new→X（链式插入）
           const outEdge = dsl.value.edges.find((e) => e.source === sel)
