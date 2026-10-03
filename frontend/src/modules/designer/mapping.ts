@@ -34,13 +34,15 @@ export function toGraphData(
   return { nodes, edges }
 }
 
-/** 注册画布节点点击/连线/删线事件 → 回调（DesignerView 使用）。 */
+/** 注册画布节点点击/连线/删线/右键事件 → 回调（DesignerView 使用）。 */
 export function bindCanvasEvents(
   lf: LogicFlow,
   handlers: {
     onNodeClick: (key: string) => void
     onEdgeConnected: (source: string, target: string) => void
     onEdgeDeleted: (source: string, target: string) => void
+    onNodeContextMenu: (key: string, x: number, y: number) => void
+    onBlankContextMenu: () => void
   },
 ) {
   lf.on('node:click', ({ data }: { data: { id: string } }) => handlers.onNodeClick(data.id as string))
@@ -48,4 +50,13 @@ export function bindCanvasEvents(
     handlers.onEdgeConnected(data.sourceNodeId as string, data.targetNodeId as string))
   lf.on('edge:delete', ({ data }: { data: { sourceNodeId: string; targetNodeId: string } }) =>
     handlers.onEdgeDeleted(data.sourceNodeId as string, data.targetNodeId as string))
+  // 右键节点：阻止浏览器默认菜单，回调节点 key 与屏幕坐标（供自定义菜单定位）
+  lf.on('node:contextmenu', ({ data, e }: { data: { id: string }; e: MouseEvent }) => {
+    e.preventDefault()
+    handlers.onNodeContextMenu(data.id as string, e.clientX, e.clientY)
+  })
+  lf.on('blank:contextmenu', ({ e }: { e: MouseEvent }) => {
+    e.preventDefault()
+    handlers.onBlankContextMenu()
+  })
 }

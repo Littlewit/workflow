@@ -3,7 +3,7 @@
  * 流程设计器（T6.2/T6.3）：画布 + 调色板 + 配置面板 + 校验 + Undo/Redo。
  * DSL 为唯一事实源；画布仅负责渲染与坐标采集。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { useRoute } from 'vue-router'
 import LogicFlow from '@logicflow/core'
@@ -20,6 +20,8 @@ const store = useDesignerStore()
 const container = ref<HTMLDivElement>()
 const issues = ref<Array<{ level: string; message: string }>>([])
 const saving = ref(false)
+// 节点右键上下文菜单
+const ctx = reactive({ visible: false, x: 0, y: 0, nodeKey: '' })
 let lf: LogicFlow | null = null
 
 // DSL 结构变化 → 重渲染画布（布局坐标保持用户拖拽结果）
@@ -62,9 +64,39 @@ onMounted(async () => {
       store.connect(s, t)
     },
     onEdgeDeleted: (s, t) => store.disconnect(s, t),
+    onNodeContextMenu: (key, x, y) => {
+      ctx.nodeKey = key
+      ctx.x = x
+      ctx.y = y
+      ctx.visible = true
+    },
+    onBlankContextMenu: () => (ctx.visible = false),
   })
   issues.value = validateCanvas(store.dsl)
+  // 全局点击关闭右键菜单
+  window.addEventListener('click', closeCtxMenu)
+  window.addEventListener('contextmenu', onWindowContextmenu)
 })
+
+function closeCtxMenu() {
+  ctx.visible = false
+}
+// 右键点在菜单外（画布空白由 onBlankContextMenu 处理，其它区域在此兜底）
+function onWindowContextmenu(e: MouseEvent) {
+  if (!(e.target as HTMLElement)?.closest('.ctx-menu')) closeCtxMenu()
+}
+
+function ctxAdd(type: 'approval' | 'cc' | 'exclusive_gateway') {
+  // 先选中右键的节点，复用"插到选中节点之后"的添加逻辑
+  store.selectedKey = ctx.nodeKey
+  store.addNode(type)
+  closeCtxMenu()
+}
+
+function ctxDelete() {
+  store.removeNode(ctx.nodeKey)
+  closeCtxMenu()
+}
 
 // 快捷键：Ctrl+Z / Ctrl+Shift+Z（T6.3）
 function onKeydown(e: KeyboardEvent) {
@@ -78,7 +110,11 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('click', closeCtxMenu)
+  window.removeEventListener('contextmenu', onWindowContextmenu)
+})
 
 // 画布拖拽后回流坐标（拖拽结束事件）
 async function syncLayout() {
@@ -175,6 +211,21 @@ async function onPublish() {
       <div ref="container" class="designer-canvas" style="height: 480px"></div>
     </a-layout-content>
 
+    <!-- 节点右键上下文菜单 -->
+    <teleport to="body">
+      <div
+        v-if="ctx.visible"
+        class="ctx-menu"
+        :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }"
+      >
+        <div class="ctx-item" @click.stop="ctxAdd('approval')">＋ 审批节点</div>
+        <div class="ctx-item" @click.stop="ctxAdd('cc')">＋ 抄送节点</div>
+        <div class="ctx-item" @click.stop="ctxAdd('exclusive_gateway')">＋ 条件分支</div>
+        <div class="ctx-divider" />
+        <div class="ctx-item danger" @click.stop="ctxDelete()">删除该节点</div>
+      </div>
+    </teleport>
+
     <!-- 配置面板 -->
     <a-layout-sider width="280" theme="light" style="border-left: 1px solid #eee">
       <div style="padding: 12px" v-if="selectedNode">
@@ -219,3 +270,36 @@ async function onPublish() {
     </a-layout-sider>
   </a-layout>
 </template>
+
+<style scoped>
+.ctx-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 150px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 21, 41, 0.16);
+  padding: 4px;
+}
+.ctx-item {
+  padding: 7px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ctx-item:hover {
+  background: #f0f5ff;
+  color: #1677ff;
+}
+.ctx-item.danger {
+  color: #ff4d4f;
+}
+.ctx-item.danger:hover {
+  background: #fff1f0;
+}
+.ctx-divider {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 4px 0;
+}
+</style>
