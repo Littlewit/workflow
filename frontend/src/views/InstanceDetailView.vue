@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /** 实例详情（T6.5 MVP）：任务列表 + 事件时间线；流程图高亮在后续小步交付。 */
 import { onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/workflow'
 import type { InstanceDetail } from '../api/workflow'
 
 const route = useRoute()
+const router = useRouter()
 const detail = ref<InstanceDetail | null>(null)
 const loading = ref(false)
 
@@ -42,6 +43,11 @@ onMounted(async () => {
 <template>
   <a-spin :spinning="loading">
     <a-card v-if="detail" :title="`实例详情：${detail.title || detail.instanceId}`">
+      <template #extra>
+        <a-button type="link" size="small" @click="router.push(`/trace/${detail!.instanceId}`)">
+          查看流程图
+        </a-button>
+      </template>
       <a-descriptions size="small" :column="3" style="margin-bottom: 16px">
         <a-descriptions-item label="状态">{{ detail.status }}</a-descriptions-item>
         <a-descriptions-item label="发起人">{{ detail.initiatorId }}</a-descriptions-item>

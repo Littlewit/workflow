@@ -29,6 +29,7 @@ export interface DefinitionRow {
 
 export interface InstanceDetail {
   instanceId: string
+  definitionId: string
   title: string
   status: string
   initiatorId: string

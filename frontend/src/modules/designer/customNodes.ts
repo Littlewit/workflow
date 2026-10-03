@@ -15,6 +15,22 @@ import LogicFlow, {
 // 注册配置类型：LogicFlow 命名空间内的 RegisterConfig
 type RegisterItem = LogicFlow.RegisterConfig
 
+/**
+ * 节点运行态高亮（追踪页用，properties.state 驱动）：
+ * - active：当前停留节点（橙色加粗）
+ * - done：已完成节点（半透明弱化）
+ */
+function applyRunState(style: Record<string, unknown>, properties: Record<string, unknown>) {
+  const state = properties['state']
+  if (state === 'active') {
+    style.stroke = '#fa541c'
+    style.strokeWidth = 3.5
+  } else if (state === 'done') {
+    style.opacity = 0.55
+  }
+  return style
+}
+
 /** 发起节点：绿色圆形。 */
 class StartModel extends CircleNodeModel {
   initNodeData(data: LogicFlow.NodeConfig) {
@@ -26,7 +42,7 @@ class StartModel extends CircleNodeModel {
     style.fill = '#f6ffed'
     style.stroke = '#52c41a'
     style.strokeWidth = 2
-    return style
+    return applyRunState(style, this.properties)
   }
   getTextStyle() {
     return { ...super.getTextStyle(), color: '#389e0d', fontSize: 13 }
@@ -44,7 +60,7 @@ class EndModel extends CircleNodeModel {
     style.fill = '#fff1f0'
     style.stroke = '#595959'
     style.strokeWidth = 3
-    return style
+    return applyRunState(style, this.properties)
   }
   getTextStyle() {
     return { ...super.getTextStyle(), color: '#595959', fontSize: 13 }
@@ -64,7 +80,7 @@ class ApprovalModel extends RectNodeModel {
     style.stroke = '#1677ff'
     style.strokeWidth = 1.5
     style.radius = 8
-    return style
+    return applyRunState(style, this.properties)
   }
   getTextStyle() {
     return { ...super.getTextStyle(), color: '#0958d9', fontSize: 13 }
@@ -84,7 +100,7 @@ class CcModel extends RectNodeModel {
     style.stroke = '#8c8c8c'
     style.strokeDasharray = '4 3'
     style.radius = 20
-    return style
+    return applyRunState(style, this.properties)
   }
   getTextStyle() {
     return { ...super.getTextStyle(), color: '#8c8c8c', fontSize: 12 }
@@ -104,7 +120,7 @@ class GatewayModel extends DiamondNodeModel {
     style.fill = '#fffbe6'
     style.stroke = '#faad14'
     style.strokeWidth = 1.5
-    return style
+    return applyRunState(style, this.properties)
   }
   getTextStyle() {
     return { ...super.getTextStyle(), color: '#d48806', fontSize: 12 }
