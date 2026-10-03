@@ -109,11 +109,10 @@ class CcModel extends RectNodeModel {
 
 /** 条件网关：黄色菱形。 */
 class GatewayModel extends DiamondNodeModel {
-  initNodeData(data: LogicFlow.NodeConfig) {
-    super.initNodeData(data)
-    const size = this as unknown as { width: number; height: number }
-    size.width = 84
-    size.height = 84
+  // 菱形尺寸由 rx/ry（半径）派生 width/height，后者是 mobx 计算属性不可直接赋值
+  setAttributes() {
+    this.rx = 44
+    this.ry = 44
   }
   getNodeStyle() {
     const style = super.getNodeStyle()
