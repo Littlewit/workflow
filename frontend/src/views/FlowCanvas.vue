@@ -127,7 +127,7 @@ onMounted(() => {
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </script>
 <template>
-  <div class="flow-canvas">
+  <div class="flow-canvas" :class="{ readonly: readonly }">
     <template v-for="item in items" :key="item.kind === 'node' ? item.key : item.gatewayKey">
       <template v-if="item.kind === 'node'">
         <div class="flow-node" @click="emit('select', item.key)">
@@ -253,11 +253,27 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </template>
 <style scoped>
 .flow-canvas { display: flex; flex-direction: column; align-items: center; }
+/* ---------- 只读模式（流程追踪/预览）----------
+   编辑模式的纵向节奏由 ＋号（26px 圆 + 上下连线）撑起；只读下＋号隐藏，
+   改用节点下边距 + 伪元素连线还原等距节奏与流向指示。 */
+.flow-canvas.readonly .flow-node { padding-bottom: 32px; }
+.flow-canvas.readonly .flow-node::after {
+  /* 节点下方连线：从卡片底边延伸到下一个节点顶边（填满 padding 留白） */
+  content: ''; position: absolute; left: 50%; bottom: 32px;
+  width: 2px; height: 32px; margin-left: -1px; background: #caccd9;
+}
+/* 泳道与下游节点之间：接入短线向下伸出 20px，与箭头（占最后 5px）衔接 */
+.flow-canvas.readonly .flow-branches { margin-bottom: 24px; }
+.flow-canvas.readonly .flow-branch { padding-bottom: 8px; }
+/* 末尾节点（结束卡片/分支链最后一步）不再画下垂连线 */
+.flow-canvas.readonly .flow-node:last-child { padding-bottom: 0; }
+.flow-canvas.readonly .flow-node:last-child::after { content: none; }
 .flow-node { position: relative; display: flex; flex-direction: column; align-items: center; }
 /* 进入节点的流向箭头：位于卡片正上方、指向卡片（仅当上游是节点或泳道出口 + 号时）。
    用 border 三角绘制，translate(-50%,-100%) 使箭头底边紧贴卡片顶边，与 + 号下段连线相接。 */
 .flow-node + .flow-node::before,
-.add-wrap + .flow-node::before {
+.add-wrap + .flow-node::before,
+.flow-canvas.readonly .flow-branches + .flow-node::before {
   content: ''; position: absolute; top: 0; left: 50%;
   transform: translate(-50%, -100%);
   border: 5px solid transparent;

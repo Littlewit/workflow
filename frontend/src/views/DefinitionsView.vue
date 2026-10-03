@@ -1,16 +1,14 @@
 <script setup lang="ts">
 /** 流程定义列表：查看预览 / 编辑草稿 / 已发布另存副本。 */
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import LogicFlow from '@logicflow/core'
-import '@logicflow/core/lib/index.css'
 import { EyeOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { api } from '../api/workflow'
 import type { DefinitionRow, WorkflowDSL } from '../types'
-import { NODE_SHAPE } from '../types/workflow'
 import { NODE_TYPE_LABELS, DEFINITION_STATUS_META } from '../constants/status'
-import { registerFlowNodes } from '../modules/designer/customNodes'
+import { buildFlowTree } from '../modules/designer/tree'
+import FlowCanvas from './FlowCanvas.vue'
 
 const router = useRouter()
 const definitions = ref<DefinitionRow[]>([])
@@ -18,10 +16,10 @@ const loading = ref(false)
 
 // 查看预览弹窗状态
 const viewState = reactive({ open: false, name: '', dsl: null as WorkflowDSL | null })
-const viewCanvas = ref<HTMLDivElement>()
-// LogicFlow 实例复用：弹窗不销毁 DOM（去掉了 destroy-on-close），
-// 重复打开只重渲染，避免每次 new 实例造成旧实例与游离 DOM 的内存滞留
-let previewLf: LogicFlow | null = null
+/** 预览 DSL → 纵向流程树（与新设计器/追踪页同一渲染数据源）。 */
+const viewTree = computed(() =>
+  viewState.dsl ? buildFlowTree(viewState.dsl) : { items: [], endKey: null },
+)
 
 async function refresh() {
   loading.value = true
@@ -43,29 +41,6 @@ async function view(row: DefinitionRow) {
   viewState.name = row.name
   viewState.dsl = detail.dsl as WorkflowDSL
   viewState.open = true
-  // 等 Modal DOM 挂载后渲染画布
-  await nextTick()
-  const el = viewCanvas.value
-  if (!el || !viewState.dsl) return
-  if (!previewLf) {
-    previewLf = new LogicFlow({ container: el, grid: true, isSilentMode: true })
-    registerFlowNodes(previewLf)
-  }
-  const lf = previewLf
-  // 按节点声明顺序从左到右平铺（修复：此前缺少 x 递增导致全部节点重叠）
-  const nodes = Object.values(viewState.dsl.nodes).map((n, i) => ({
-    id: n.key,
-    type: NODE_SHAPE[n.type] ?? 'wf-approval',
-    x: 140 + i * 170,
-    y: 200,
-    text: n.name,
-  }))
-  const edges = viewState.dsl.edges.map((e) => ({
-    sourceNodeId: e.source,
-    targetNodeId: e.target,
-    type: 'polyline',
-  }))
-  lf.render({ nodes, edges })
 }
 
 /** 已发布定义另存为副本草稿（code 加随机后缀避免唯一冲突）。 */
@@ -140,7 +115,16 @@ onMounted(refresh)
       :footer="null"
     >
       <template v-if="viewState.dsl">
-        <div ref="viewCanvas" style="height: 400px; border: 1px solid #eee; border-radius: 8px"></div>
+        <!-- 新纵向设计器只读渲染（与追踪页/设计器同构） -->
+        <div class="preview-scroll">
+          <FlowCanvas
+            :items="viewTree.items"
+            :dsl="viewState.dsl"
+            :end-key="viewTree.endKey"
+            :depth="0"
+            readonly
+          />
+        </div>
         <a-collapse style="margin-top: 12px">
           <a-collapse-panel header="节点清单">
             <a-table
@@ -166,3 +150,13 @@ onMounted(refresh)
     </a-modal>
   </a-card>
 </template>
+
+<style scoped>
+/* 预览画布滚动区：高度自适应内容，超出滚动 */
+.preview-scroll {
+  border: 1px solid #eee; border-radius: 8px;
+  padding: 16px 8px;
+  max-height: 420px; overflow: auto;
+  background: #fff;
+}
+</style>
