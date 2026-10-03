@@ -130,6 +130,12 @@ export const useDesignerStore = defineStore('designer', () => {
     for (const k of Object.keys(nodes)) {
       if (!seen.has(k)) order.push(k)
     }
+    // end 节点固定排最右（多分支时 BFS 可能提前到达 end）
+    const endIdx = order.indexOf('end')
+    if (endIdx >= 0) {
+      order.splice(endIdx, 1)
+      order.push('end')
+    }
     const next: Record<string, { x: number; y: number }> = {}
     order.forEach((k, i) => {
       next[k] = { x: 120 + i * 170, y: 200 }
@@ -137,7 +143,12 @@ export const useDesignerStore = defineStore('designer', () => {
     layout.value = next
   }
 
-  /** 添加节点：审批/抄送/网关（start/end 由初始 DSL 提供）。 */
+  /**
+   * 添加节点：
+   * - 选中了节点 → 插到选中节点之后（普通节点改写其唯一出边形成链；
+   *   网关则追加一条新分支边，可连续多次添加多个分支节点）
+   * - 未选中 → 插到 end 之前
+   */
   function addNode(type: 'approval' | 'cc' | 'exclusive_gateway') {
     const key = nextKey(type === 'exclusive_gateway' ? 'gateway' : type)
     let node: WfNode
@@ -154,15 +165,32 @@ export const useDesignerStore = defineStore('designer', () => {
     }
     commit(() => {
       dsl.value.nodes[key] = node
-      // 新节点插在 end 之前：last -> new -> end
-      const incoming = dsl.value.edges.find((e) => e.target === 'end')
-      if (incoming) {
-        dsl.value.edges = dsl.value.edges.filter((e) => e !== incoming)
-        dsl.value.edges.push({ source: incoming.source, target: key })
+      const sel = selectedKey.value
+      if (sel && sel in dsl.value.nodes && sel !== key) {
+        const selNode = dsl.value.nodes[sel]
+        if (selNode.type === 'exclusive_gateway') {
+          // 网关：追加新分支边（不动既有分支），新节点连回 end → 可连续添加多个
+          dsl.value.edges.push({ source: sel, target: key })
+          dsl.value.edges.push({ source: key, target: 'end' })
+        } else {
+          // 普通节点：唯一出边 sel→X 改写为 sel→new→X（链式插入）
+          const outEdge = dsl.value.edges.find((e) => e.source === sel)
+          const next = outEdge?.target
+          dsl.value.edges = dsl.value.edges.filter((e) => e !== outEdge)
+          dsl.value.edges.push({ source: sel, target: key })
+          if (next) dsl.value.edges.push({ source: key, target: next })
+        }
+      } else {
+        // 未选中：插到 end 之前
+        const incoming = dsl.value.edges.find((e) => e.target === 'end')
+        if (incoming) {
+          dsl.value.edges = dsl.value.edges.filter((e) => e !== incoming)
+          dsl.value.edges.push({ source: incoming.source, target: key })
+        }
+        dsl.value.edges.push({ source: key, target: 'end' })
       }
-      dsl.value.edges.push({ source: key, target: 'end' })
       selectedKey.value = key
-      autoLayout() // 结构变化后自动平铺，避免新节点与结束节点重叠
+      autoLayout() // 结构变化后自动平铺
     })
   }
 
