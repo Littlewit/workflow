@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # 开发阶段 SQLite；生产用 WF_DATABASE_URL 切换，如 postgresql+asyncpg://...
     database_url: str = "sqlite+aiosqlite:///./workflow.db"
 
+    # Redis（幂等存储/分布式锁/ARQ 队列）；开发环境可不启动，服务自动用内存实现
+    redis_url: str = "redis://localhost:6379"
+
     # JWT 认证：默认密钥仅用于本地开发（≥32 字节满足 HS256 要求），生产必须覆盖
     jwt_secret: str = "dev-only-secret-0123456789abcdef0123456789abcdef"
     jwt_expire_minutes: int = 720

@@ -16,6 +16,13 @@ from app.infra.models.definition import WorkflowDefinition, WorkflowDefinitionVe
 from app.infra.models.instance import InstanceEvent, TaskInstance, WorkflowInstance
 
 
+def _parse_dt(value: str | None) -> datetime | None:
+    """ISO 字符串 → datetime（引擎快照恢复用）。"""
+    from datetime import datetime as _dt
+
+    return _dt.fromisoformat(value) if value else None
+
+
 class DefinitionRepository:
     """流程定义与版本快照读写。"""
 
@@ -104,6 +111,7 @@ class TaskRepository:
             row.status = t["status"]
             row.action = t["action"]
             row.counter_sign_group_id = t.get("counter_sign_group_id")
+            row.deadline_at = _parse_dt(t.get("deadline_at"))
 
     async def list_todo(self, assignee_id: str) -> list[TaskInstance]:
         """某人的全部待办任务。"""
@@ -111,6 +119,19 @@ class TaskRepository:
             select(TaskInstance)
             .where(TaskInstance.assignee_id == assignee_id, TaskInstance.status == "pending")
             .order_by(TaskInstance.created_at.desc())
+        )
+        return list((await self._session.execute(stmt)).scalars())
+
+    async def list_overdue(self, now: datetime, limit: int = 50) -> list[TaskInstance]:
+        """超时扫描：pending 且已过截止时间的任务（详细设计 §2.4 算法）。"""
+        stmt = (
+            select(TaskInstance)
+            .where(
+                TaskInstance.status == "pending",
+                TaskInstance.deadline_at.is_not(None),
+                TaskInstance.deadline_at < now,
+            )
+            .limit(limit)
         )
         return list((await self._session.execute(stmt)).scalars())
 

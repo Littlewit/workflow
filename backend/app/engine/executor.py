@@ -471,9 +471,9 @@ class WorkflowEngine:
                 other = state.tokens.get(other_id)
                 if other is None:
                     continue
-                for t in state.tasks.values():
-                    if t.token_id == other_id and t.status == TaskStatus.PENDING:
-                        self._transition_task(state, t, TaskStatus.CANCELED, None)
+                for other_task in state.tasks.values():
+                    if other_task.token_id == other_id and other_task.status == TaskStatus.PENDING:
+                        self._transition_task(state, other_task, TaskStatus.CANCELED, None)
                 state.tokens.pop(other_id, None)
 
         self._walk(state, merged)
