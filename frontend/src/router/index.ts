@@ -10,8 +10,10 @@ const router = createRouter({
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/', redirect: '/approval/todo' },
     { path: '/definitions', component: () => import('../views/DefinitionsView.vue') },
-    { path: '/designer/:id', component: () => import('../views/DesignerView.vue') },
+    { path: '/designer/:id?', component: () => import('../views/DesignerView.vue') },
     { path: '/approval/todo', component: () => import('../views/TodoView.vue') },
+    { path: '/approval/detail/:id', component: () => import('../views/InstanceDetailView.vue') },
+    { path: '/initiate', component: () => import('../views/InitiateView.vue') },
   ],
 })
 

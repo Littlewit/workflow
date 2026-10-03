@@ -53,4 +53,8 @@ export default {
   async post<T>(url: string, data?: unknown): Promise<T> {
     return (await http.post(url, data)) as T
   },
+  /** PUT 请求：T 为解包后的业务数据类型。 */
+  async put<T>(url: string, data?: unknown): Promise<T> {
+    return (await http.put(url, data)) as T
+  },
 }

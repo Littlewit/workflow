@@ -2,8 +2,11 @@
 /** 我的待办（T6.5 MVP）：待办列表 + 同意/驳回操作。 */
 import { onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api/workflow'
 import type { TaskSummary } from '../api/workflow'
+
+const router = useRouter()
 
 const tasks = ref<TaskSummary[]>([])
 const loading = ref(false)
@@ -37,6 +40,7 @@ onMounted(refresh)
           <a-space>
             <a-button type="primary" size="small" @click="act(record.taskId, 'approve')">同意</a-button>
             <a-button danger size="small" @click="act(record.taskId, 'reject')">驳回</a-button>
+            <a-button size="small" @click="router.push(`/approval/detail/${record.instanceId}`)">详情</a-button>
           </a-space>
         </template>
       </a-table-column>
