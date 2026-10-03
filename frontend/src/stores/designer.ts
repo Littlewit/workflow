@@ -4,7 +4,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { WfNode, WorkflowDSL } from '../types/workflow'
+import type { ExclusiveGatewayNode, WfNode, WorkflowDSL } from '../types/workflow'
 
 const MAX_HISTORY = 50 // 快照栈上限（防内存膨胀）
 
@@ -227,6 +227,47 @@ export const useDesignerStore = defineStore('designer', () => {
     })
   }
 
+  // ---------- 网关分支操作（条件判断配置面板用） ----------
+
+  /** 设置某分支的条件表达式；分支条目不存在时自动创建（target 取对应出边的目标）。 */
+  function setBranchCondition(gatewayKey: string, branchKey: string, condition: string) {
+    if (!(gatewayKey in dsl.value.nodes)) return
+    commit(() => {
+      const gw = dsl.value.nodes[gatewayKey] as ExclusiveGatewayNode
+      const entry = gw.branches.find((b) => b.branch_key === branchKey)
+      const target =
+        dsl.value.edges.find((e) => e.source === gatewayKey && e.branch_key === branchKey)?.target ?? 'end'
+      if (entry) entry.condition = condition
+      else gw.branches.push({ branch_key: branchKey, condition, target })
+    })
+  }
+
+  /** 删除分支：移除分支条目与对应出边；若删除的是默认分支则自动改指第一条剩余分支。 */
+  function removeGatewayBranch(gatewayKey: string, branchKey: string) {
+    if (!(gatewayKey in dsl.value.nodes)) return
+    commit(() => {
+      const gw = dsl.value.nodes[gatewayKey] as ExclusiveGatewayNode
+      gw.branches = gw.branches.filter((b) => b.branch_key !== branchKey)
+      dsl.value.edges = dsl.value.edges.filter(
+        (e) => !(e.source === gatewayKey && e.branch_key === branchKey),
+      )
+      if (gw.default_branch_key === branchKey) {
+        const remaining = dsl.value.edges
+          .filter((e) => e.source === gatewayKey && e.branch_key && e.branch_key !== 'default')
+          .map((e) => e.branch_key as string)
+        gw.default_branch_key = remaining[0] ?? ''
+      }
+    })
+  }
+
+  /** 设置默认分支（全部条件不命中时走的分支）。 */
+  function setDefaultBranch(gatewayKey: string, branchKey: string) {
+    if (!(gatewayKey in dsl.value.nodes)) return
+    commit(() => {
+      ;(dsl.value.nodes[gatewayKey] as ExclusiveGatewayNode).default_branch_key = branchKey
+    })
+  }
+
   /** 连线：在两节点间建立边（画布拖拽连线回调）；重复边忽略。 */
   function connect(source: string, target: string) {
     if (source === target) return
@@ -250,5 +291,6 @@ export const useDesignerStore = defineStore('designer', () => {
     dsl, definitionId, selectedKey, layout, version,
     canUndo, canRedo,
     commit, undo, redo, load, addNode, removeNode, updateNode, connect, disconnect,
+    setBranchCondition, removeGatewayBranch, setDefaultBranch,
   }
 })

@@ -13,7 +13,7 @@ import { toGraphData, bindCanvasEvents } from '../modules/designer/mapping'
 import { registerFlowNodes } from '../modules/designer/customNodes'
 import { validateCanvas } from '../modules/designer/validator'
 import { api } from '../api/workflow'
-import type { ApprovalNode, WorkflowDSL } from '../types/workflow'
+import type { ApprovalNode, ExclusiveGatewayNode, WorkflowDSL } from '../types/workflow'
 
 const route = useRoute()
 const store = useDesignerStore()
@@ -134,6 +134,32 @@ const selectedNode = computed(() =>
 const selectedApproval = computed(() =>
   selectedNode.value?.type === 'approval' ? (selectedNode.value as ApprovalNode) : null,
 )
+// 选中的网关节点及其出边（分支条件编辑用）
+const selectedGateway = computed(() =>
+  selectedNode.value?.type === 'exclusive_gateway'
+    ? (selectedNode.value as ExclusiveGatewayNode)
+    : null,
+)
+const gatewayBranches = computed(() => {
+  const gw = selectedGateway.value
+  if (!gw) return []
+  return store.dsl.edges
+    .filter((e) => e.source === store.selectedKey && e.branch_key)
+    .map((e) => {
+      const branchKey = e.branch_key as string
+      const entry = gw.branches.find((b) => b.branch_key === branchKey)
+      return {
+        branchKey,
+        targetName: store.dsl.nodes[e.target]?.name ?? e.target,
+        isDefault: branchKey === gw.default_branch_key,
+        condition: entry?.condition ?? '',
+      }
+    })
+})
+
+function onBranchConditionChange(branchKey: string, e: Event) {
+  store.setBranchCondition(store.selectedKey, branchKey, (e.target as HTMLInputElement).value)
+}
 const userIdsText = computed({
   get: () => ((selectedApproval.value?.assignee.params['user_ids'] as string[]) ?? []).join(','),
   set: (v: string) => {
@@ -266,6 +292,52 @@ async function onPublish() {
               </a-select>
             </a-form-item>
           </template>
+          <template v-if="selectedGateway">
+            <a-divider style="margin: 8px 0">条件分支</a-divider>
+            <div
+              v-for="branch in gatewayBranches"
+              :key="branch.branchKey"
+              class="branch-editor"
+            >
+              <div class="branch-head">
+                <span>→ {{ branch.targetName }}</span>
+                <a-space>
+                  <a-tag v-if="branch.isDefault" color="blue">默认</a-tag>
+                  <a-button
+                    v-if="!branch.isDefault"
+                    type="link"
+                    danger
+                    size="small"
+                    @click="store.removeGatewayBranch(store.selectedKey, branch.branchKey)"
+                  >
+                    删除
+                  </a-button>
+                </a-space>
+              </div>
+              <a-input
+                v-if="!branch.isDefault"
+                size="small"
+                :value="branch.condition"
+                placeholder="条件表达式，如 days > 3"
+                @change="(e: Event) => onBranchConditionChange(branch.branchKey, e)"
+              />
+              <div v-else style="color: #999; font-size: 12px">全部条件不命中时走此分支</div>
+            </div>
+            <a-button block size="small" style="margin: 8px 0" @click="store.addNode('approval')">
+              ＋ 添加分支节点
+            </a-button>
+            <a-form-item label="默认分支">
+              <a-select
+                size="small"
+                :value="selectedGateway.default_branch_key"
+                @change="(v: string) => store.setDefaultBranch(store.selectedKey, v)"
+              >
+                <a-select-option v-for="b in gatewayBranches" :key="b.branchKey" :value="b.branchKey">
+                  → {{ b.targetName }}
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+          </template>
           <a-button danger block size="small" @click="store.removeNode(store.selectedKey)">
             删除该节点
           </a-button>
@@ -306,5 +378,18 @@ async function onPublish() {
   height: 1px;
   background: #f0f0f0;
   margin: 4px 0;
+}
+.branch-editor {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.branch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 13px;
 }
 </style>
