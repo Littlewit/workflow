@@ -258,8 +258,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
    改用节点下边距 + 伪元素连线还原等距节奏与流向指示。 */
 .flow-canvas.readonly .flow-node { padding-bottom: 32px; }
 .flow-canvas.readonly .flow-node::after {
-  /* 节点下方连线：从卡片底边延伸到下一个节点顶边（填满 padding 留白） */
-  content: ''; position: absolute; left: 50%; bottom: 32px;
+  /* 节点下方连线：bottom:0 从节点底边（含 padding）向上取 32px，
+     恰好填满卡片底边与下一节点顶边之间的 padding 留白 */
+  content: ''; position: absolute; left: 50%; bottom: 0;
   width: 2px; height: 32px; margin-left: -1px; background: #caccd9;
 }
 /* 泳道与下游节点之间：接入短线向下伸出 20px，与箭头（占最后 5px）衔接 */
