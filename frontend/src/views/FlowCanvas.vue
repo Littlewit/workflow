@@ -118,11 +118,12 @@ function branchTargetName(b: TreeBranch): string {
               <!-- 分支上下接入短线：把分支与泳道汇聚线连成一体（先渲染，位于卡片层之下） -->
               <span class="lane-stub lane-stub-top" />
               <span class="lane-stub lane-stub-bottom" />
-              <!-- 遮盖块：盖掉汇聚线超出首/末分支中点的部分（颜色与泳道底色一致，隐形） -->
-              <span v-if="bi === 0" class="lane-mask mask-tl" />
-              <span v-if="bi === 0" class="lane-mask mask-bl" />
-              <span v-if="bi === item.branches.length - 1" class="lane-mask mask-tr" />
-              <span v-if="bi === item.branches.length - 1" class="lane-mask mask-br" />
+              <!-- 分支间半段连线：只朝相邻分支方向延伸（首分支不向左、末分支不向右），
+                   相邻分支的半段在间隙中重叠，拼成"首分支中点 → 末分支中点"的汇聚线，结构上无线头 -->
+              <span v-if="bi > 0" class="lane-half half-top-left" />
+              <span v-if="bi > 0" class="lane-half half-bottom-left" />
+              <span v-if="bi < item.branches.length - 1" class="lane-half half-top-right" />
+              <span v-if="bi < item.branches.length - 1" class="lane-half half-bottom-right" />
               <div
                 class="flow-branch-tag"
                 :class="{ 'is-default': isDefaultBranch(item.gatewayKey, b.branchKey), unset: !isDefaultBranch(item.gatewayKey, b.branchKey) && !branchCondition(item.gatewayKey, b.branchKey) }"
@@ -207,54 +208,46 @@ function branchTargetName(b: TreeBranch): string {
   width: 26px; height: 26px; border-radius: 50%;
   background: #1677ff; color: #fff;
   display: flex; align-items: center; justify-content: center;
-  cursor: pointer; margin: 10px 0; font-size: 14px; user-select: none;
+  cursor: pointer; margin: 14px 0; font-size: 14px; user-select: none;
 }
-/* 节点间竖向连线：+ 号圆上下各延伸 10px，恰好补齐与相邻卡片之间的 margin 间隙 */
+/* 节点间竖向连线：+ 号圆上下各延伸 14px，恰好补齐与相邻卡片之间的 margin 间隙 */
 .flow-plus::before,
 .flow-plus::after {
   content: ''; position: absolute; left: 50%; width: 2px; margin-left: -1px;
   background: #caccd9;
 }
-.flow-plus::before { top: -10px; height: 10px; }      /* 上段：补齐 margin-top 间隙 */
-.flow-plus::after { top: 100%; bottom: -10px; }       /* 下段：补齐 margin-bottom 间隙 */
+.flow-plus::before { top: -14px; height: 14px; }      /* 上段：补齐 margin-top 间隙 */
+.flow-plus::after { top: 100%; bottom: -14px; }       /* 下段：补齐 margin-bottom 间隙 */
 .flow-plus:hover { background: #4096ff; }
 
 /* 分支泳道：外层只做定位容器（宽度 = lane 宽度），保证整体在画布中水平居中 */
 .flow-branches { position: relative; }
 .flow-lane {
   position: relative; display: flex; gap: 12px; align-items: stretch;
-  padding: 16px 20px; /* 上下留出汇聚线与分支之间的接入空间 */
-  background: #fafbfc; border-radius: 10px; /* 与分支同色：让遮盖块无缝隐形 */
+  padding: 20px 24px; /* 上下留出半段连线/接入短线与分支之间的空间 */
+  background: #fafbfc; border-radius: 10px; /* 泳道底色与分支一致，形成分组感 */
 }
-/* 顶部/底部汇聚线：横贯泳道，上游流入线在顶部中点接入，下游从底部中点流出。
-   两端超出首/末分支中点的部分由 lane-mask 遮盖。 */
-.flow-lane::before,
-.flow-lane::after {
-  content: ''; position: absolute; left: 0; right: 0; height: 2px;
-  background: #caccd9;
-}
-.flow-lane::before { top: 0; }
-.flow-lane::after { bottom: 0; }
 
-/* 分支上下接入短线：从分支边缘延伸到汇聚线（先于卡片渲染，被内容遮住亦无碍） */
+/* 分支上下接入短线：从分支边缘延伸到泳道边（与半段连线同一水平位置） */
 .lane-stub {
   position: absolute; left: 50%; width: 2px; margin-left: -1px;
   background: #caccd9;
 }
-/* 高度 22px = 泳道 padding 16px + 深入分支 6px，确保与标签/卡片视觉相接 */
-.lane-stub-top { top: -16px; height: 22px; }
-.lane-stub-bottom { bottom: -16px; height: 22px; }
+/* 高度 26px = 泳道 padding 20px + 深入分支 6px，确保与标签/卡片视觉相接 */
+.lane-stub-top { top: -20px; height: 26px; }
+.lane-stub-bottom { bottom: -20px; height: 26px; }
 
-/* 遮盖块：2px 高、与汇聚线同位，颜色与泳道底色一致。
-   z-index:1 需盖过 .flow-lane::after（伪元素晚于子元素绘制），彻底收掉两端线头。 */
-.lane-mask { position: absolute; height: 2px; background: #fafbfc; z-index: 1; }
-.mask-tl { top: -16px; left: -20px; width: calc(50% + 20px); }   /* 首分支：盖到分支中点 */
-.mask-bl { bottom: -16px; left: -20px; width: calc(50% + 20px); }
-.mask-tr { top: -16px; right: -20px; width: calc(50% + 20px); }  /* 末分支：盖到分支中点 */
-.mask-br { bottom: -16px; right: -20px; width: calc(50% + 20px); }
+/* 分支间半段连线：从分支中点朝相邻分支方向延伸，越过分支边缘 13px（泳道 gap 12px，
+   双方在间隙中重叠 1px 保证无缝）。首/末分支不向外延伸 => 汇聚线精确止于首末分支中点，无线头。
+   单分支泳道不渲染任何半段线，只剩竖向接入线，视觉干净。 */
+.lane-half { position: absolute; height: 2px; background: #caccd9; }
+.half-top-left { top: -20px; left: -13px; width: calc(50% + 13px); }
+.half-bottom-left { bottom: -20px; left: -13px; width: calc(50% + 13px); }
+.half-top-right { top: -20px; right: -13px; width: calc(50% + 13px); }
+.half-bottom-right { bottom: -20px; right: -13px; width: calc(50% + 13px); }
 
 .flow-branch {
-  position: relative; /* 接入短线/遮盖块的定位基准 */
+  position: relative; /* 接入短线/半段连线的定位基准 */
   display: flex; flex-direction: column; align-items: center;
   background: #fafbfc; border: 1px solid #f0f0f0; border-radius: 10px;
   padding: 0 10px; /* 上下不留内边距：让 + 号连线直接贴合分支边缘 */
@@ -279,9 +272,4 @@ function branchTargetName(b: TreeBranch): string {
 .flow-branch-priority { font-size: 12px; font-weight: 600; color: #d48806; }
 .flow-branch-tag.is-default .flow-branch-priority { color: #1677ff; }
 .flow-branch-cond { font-size: 12px; color: #595959; word-break: break-all; }
-.flow-add-branch {
-  align-self: center; cursor: pointer; color: #1677ff;
-  font-size: 12px; padding: 4px 10px; border-radius: 6px;
-}
-.flow-add-branch:hover { background: #f0f5ff; }
 </style>
