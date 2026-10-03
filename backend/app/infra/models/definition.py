@@ -35,6 +35,8 @@ class WorkflowDefinition(Base):
     # 0 表示从未发布；发布时 +1 并写入对应 version 快照
     current_version: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(16), default="draft")
+    # 草稿 DSL（发布时冻结到版本快照；已发布定义不可修改草稿）
+    draft_dsl: Mapped[dict | None] = mapped_column(JSON, default=None)
 
     versions: Mapped[list["WorkflowDefinitionVersion"]] = relationship(
         back_populates="definition", order_by="WorkflowDefinitionVersion.version"

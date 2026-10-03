@@ -30,7 +30,7 @@ from app.engine.resolvers import ResolverRegistry
 from app.infra.engine_codec import deserialize_state, serialize_state, serialize_tasks
 from app.infra.idempotency import InMemoryInstanceLock, InMemoryOperationStore
 from app.infra.models.definition import WorkflowDefinitionVersion
-from app.infra.models.instance import TaskInstance, TaskOpinion, WorkflowInstance
+from app.infra.models.instance import InstanceEvent, TaskInstance, TaskOpinion, WorkflowInstance
 from app.infra.repositories import (
     DefinitionRepository,
     EventRepository,
@@ -168,6 +168,7 @@ class WorkflowService:
 
         async with self._sessions() as session:
             instance = await self._load_instance_by_task(session, task_id)
+            self._ensure_not_suspended(instance)
             if not self._locks.acquire(instance.id):
                 raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
             try:
@@ -198,6 +199,7 @@ class WorkflowService:
 
         async with self._sessions() as session:
             instance = await self._load_instance_by_task(session, task_id)
+            self._ensure_not_suspended(instance)
             if not self._locks.acquire(instance.id):
                 raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
             try:
@@ -229,6 +231,162 @@ class WorkflowService:
                 for t in tasks
             ]
 
+    # ---------- 用例：转办 / 撤回 ----------
+
+    async def transfer(
+        self, task_id: str, user_id: str, to_user_id: str, opinion: str = "",
+        operation_id: str | None = None,
+    ) -> dict:
+        """转办任务给他人（原任务终态，承接人获得新任务）。"""
+        op_key = f"transfer:{user_id}:{operation_id}" if operation_id else None
+        if op_key and (cached := self._operations.get(op_key)) is not None:
+            return cached
+
+        async with self._sessions() as session:
+            instance = await self._load_instance_by_task(session, task_id)
+            self._ensure_not_suspended(instance)
+            if not self._locks.acquire(instance.id):
+                raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
+            try:
+                state = await self._restore_state(session, instance)
+                self._get_task(state, task_id, user_id)
+                WorkflowEngine(state.dsl, self._build_resolvers()).transfer(
+                    state, task_id, user_id, to_user_id
+                )
+                return await self._persist_and_finish(
+                    session, instance, state, task_id, user_id, opinion, op_key
+                )
+            finally:
+                self._locks.release(instance.id)
+
+    async def recall(self, task_id: str, user_id: str, operation_id: str | None = None) -> dict:
+        """撤回已提交的任务（下一节点未处理时）。"""
+        op_key = f"recall:{user_id}:{operation_id}" if operation_id else None
+        if op_key and (cached := self._operations.get(op_key)) is not None:
+            return cached
+
+        async with self._sessions() as session:
+            instance = await self._load_instance_by_task(session, task_id)
+            if not self._locks.acquire(instance.id):
+                raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
+            try:
+                state = await self._restore_state(session, instance)
+                WorkflowEngine(state.dsl, self._build_resolvers()).recall(state, task_id, user_id)
+                return await self._persist_and_finish(session, instance, state, task_id, user_id, "", op_key)
+            finally:
+                self._locks.release(instance.id)
+
+    async def list_done(self, assignee_id: str) -> list[dict]:
+        """查询某人已办任务摘要。"""
+        async with self._sessions() as session:
+            tasks = await TaskRepository(session).list_done(assignee_id)
+            return [
+                {
+                    "taskId": t.id,
+                    "instanceId": t.instance_id,
+                    "nodeName": t.node_name,
+                    "status": t.status,
+                    "action": t.action,
+                }
+                for t in tasks
+            ]
+
+    # ---------- 用例：实例运维与查询 ----------
+
+    async def _instance_op(self, instance_id: str, op_name: str, reason: str = "") -> dict:
+        """实例级运维操作的统一模板：锁 → 引擎操作 → 落库。
+
+        Args:
+            op_name: terminate / suspend / resume / cancel。
+        """
+        async with self._sessions() as session:
+            instance = await InstanceRepository(session).get_for_update(instance_id)
+            if instance is None:
+                raise InstanceNotFoundError(instance_id)
+            if not self._locks.acquire(instance_id):
+                raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
+            try:
+                state = await self._restore_state(session, instance)
+                engine = WorkflowEngine(state.dsl, self._build_resolvers())
+                getattr(engine, op_name)(state, reason) if op_name != "resume" else engine.resume(state)
+                return await self._persist_and_finish(session, instance, state, "", "", "", None)
+            finally:
+                self._locks.release(instance_id)
+
+    async def terminate_instance(self, instance_id: str, user_id: str, reason: str = "") -> dict:
+        """管理员强制终止。"""
+        return await self._instance_op(instance_id, "terminate", reason)
+
+    async def suspend_instance(self, instance_id: str, user_id: str, reason: str = "") -> dict:
+        """暂停实例。"""
+        return await self._instance_op(instance_id, "suspend", reason)
+
+    async def resume_instance(self, instance_id: str, user_id: str) -> dict:
+        """恢复实例。"""
+        return await self._instance_op(instance_id, "resume")
+
+    async def cancel_instance(self, instance_id: str, user_id: str, reason: str = "") -> dict:
+        """发起人撤回实例。"""
+        return await self._instance_op(instance_id, "cancel", reason)
+
+    async def get_instance_detail(self, instance_id: str) -> dict:
+        """实例详情：状态 + 当前节点 + 任务镜像 + 事件时间线。"""
+        async with self._sessions() as session:
+            instance = await InstanceRepository(session).get(instance_id)
+            if instance is None:
+                raise InstanceNotFoundError(instance_id)
+            tasks = (await session.execute(
+                select(TaskInstance).where(TaskInstance.instance_id == instance_id)
+            )).scalars().all()
+            events = (await session.execute(
+                select(InstanceEvent)
+                .where(InstanceEvent.instance_id == instance_id)
+                .order_by(InstanceEvent.created_at)
+            )).scalars().all()
+            return {
+                "instanceId": instance.id,
+                "definitionVersion": instance.definition_version,
+                "title": instance.title,
+                "status": instance.status,
+                "initiatorId": instance.initiator_id,
+                "currentNodeKeys": instance.current_node_keys,
+                "startedAt": instance.started_at.isoformat() if instance.started_at else None,
+                "finishedAt": instance.finished_at.isoformat() if instance.finished_at else None,
+                "tasks": [
+                    {
+                        "taskId": t.id, "nodeKey": t.node_key, "nodeName": t.node_name,
+                        "assigneeId": t.assignee_id, "status": t.status, "action": t.action,
+                        "round": t.round,
+                    }
+                    for t in tasks
+                ],
+                "timeline": [
+                    {
+                        "eventId": e.id, "eventType": e.event_type, "nodeKey": e.node_key,
+                        "payload": e.payload,
+                        "createdAt": e.created_at.isoformat() if e.created_at else None,
+                    }
+                    for e in events
+                ],
+            }
+
+    async def list_my_instances(self, initiator_id: str) -> list[dict]:
+        """我发起的实例列表。"""
+        async with self._sessions() as session:
+            rows = (await session.execute(
+                select(WorkflowInstance)
+                .where(WorkflowInstance.initiator_id == initiator_id)
+                .order_by(WorkflowInstance.started_at.desc())
+            )).scalars().all()
+            return [
+                {
+                    "instanceId": r.id, "title": r.title, "status": r.status,
+                    "businessKey": r.business_key,
+                    "startedAt": r.started_at.isoformat() if r.started_at else None,
+                }
+                for r in rows
+            ]
+
     # ---------- 内部：状态恢复与持久化 ----------
 
     def _build_resolvers(self) -> ResolverRegistry:
@@ -243,6 +401,12 @@ class WorkflowService:
         )
         version = (await session.execute(stmt)).scalar_one()
         return deserialize_state(_load_dsl(version), instance.id, instance.engine_state)
+
+    @staticmethod
+    def _ensure_not_suspended(instance: WorkflowInstance) -> None:
+        """暂停中的实例禁止一切任务操作（对应 42101）。"""
+        if instance.status == InstanceStatus.SUSPENDED.value:
+            raise TaskConflictError(42101, "实例已暂停，任务不可操作")
 
     @staticmethod
     def _get_task(state: ExecutionState, task_id: str, user_id: str):
@@ -285,7 +449,7 @@ class WorkflowService:
         instance.current_node_keys = [t.current_key for t in state.tokens.values()]
         instance.engine_state = serialize_state(state)
         instance.state_version += 1  # 乐观锁递增（Redis 锁的兜底防线）
-        if state.status in (InstanceStatus.COMPLETED, InstanceStatus.TERMINATED):
+        if state.status in (InstanceStatus.COMPLETED, InstanceStatus.TERMINATED, InstanceStatus.CANCELED):
             instance.finished_at = datetime.now(timezone.utc)
 
         await TaskRepository(session).bulk_upsert_mirror(instance.id, serialize_tasks(state))

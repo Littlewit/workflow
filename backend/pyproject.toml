@@ -12,6 +12,8 @@ extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]  # 基础错误 + isort 导入排序 + pyupgrade + bugbear
+# B008：FastAPI 的 Depends() 作为参数默认值是官方惯用法，忽略
+extend-ignore = ["B008"]
 
 [tool.mypy]
 python_version = "3.10"

@@ -114,6 +114,18 @@ class TaskRepository:
         )
         return list((await self._session.execute(stmt)).scalars())
 
+    async def list_done(self, assignee_id: str) -> list[TaskInstance]:
+        """某人的全部已办任务（终态）。"""
+        stmt = (
+            select(TaskInstance)
+            .where(
+                TaskInstance.assignee_id == assignee_id,
+                TaskInstance.status.in_(["approved", "rejected", "transferred", "timeout_auto"]),
+            )
+            .order_by(TaskInstance.finished_at.desc())
+        )
+        return list((await self._session.execute(stmt)).scalars())
+
 
 class EventRepository:
     """事件流水（Outbox 持久层）读写。"""

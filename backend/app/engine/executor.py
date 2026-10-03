@@ -202,6 +202,128 @@ class WorkflowEngine:
         token.path = token.path[:t_idx] + ([target] if target in token.path else [])
         self._enter_node(state, token)
 
+    def transfer(self, state: ExecutionState, task_id: str, by_user_id: str, to_user_id: str) -> str:
+        """转办：当前任务终态化，生成承接人的新任务（同节点同轮次）。
+
+        Returns:
+            新任务 ID。
+        """
+        task = state.tasks[task_id]
+        if task.assignee_id != by_user_id:
+            from app.engine.exceptions import AssigneeResolveError
+
+            raise AssigneeResolveError(f"用户 {by_user_id} 不是该任务的处理人，无法转办")
+        ensure_task_transition(task.status, TaskStatus.TRANSFERRED)
+        self._transition_task(state, task, TaskStatus.TRANSFERRED, TaskAction.TRANSFER)
+
+        new_task = EngineTask(
+            id=uuid4().hex, node_key=task.node_key, node_name=task.node_name,
+            node_type=task.node_type, assignee_id=to_user_id, round=task.round,
+        )
+        state.tasks[new_task.id] = new_task
+        state.events.append(
+            EngineEvent("task_transferred", task.node_key, {"from": task.id, "to": to_user_id})
+        )
+        return new_task.id
+
+    def recall(self, state: ExecutionState, task_id: str, by_user_id: str) -> None:
+        """撤回：上一节点处理人撤回已提交的任务（下一节点任务尚未处理时）。
+
+        逻辑：取消当前 pending 任务，token 回退到上一审批节点，
+        由撤回人（即上一节点处理人）重新获得任务。
+        """
+        task = state.tasks[task_id]
+        if task.status != TaskStatus.PENDING:
+            from app.engine.exceptions import IllegalTransitionError
+
+            raise IllegalTransitionError("仅待处理状态的任务可被撤回")
+        token = self._token_of_node(state, task.node_key)
+
+        # 从路径中找上一个审批节点（跳过 start 等非审批节点）
+        prev = None
+        for key in reversed(token.path[:-1]):
+            if isinstance(self._dsl.nodes[key], ApprovalNode):
+                prev = key
+                break
+        if prev is None:
+            from app.engine.exceptions import WorkflowConfigError
+
+            raise WorkflowConfigError("没有可撤回的上一个审批节点")
+
+        # 校验撤回人 = 上一节点的处理人（或发起人重走场景）
+        prior_tasks = [
+            t for t in state.tasks.values()
+            if t.node_key == prev and t.status in (TaskStatus.APPROVED, TaskStatus.REJECTED)
+        ]
+        allowed_user = prior_tasks[-1].assignee_id if prior_tasks else state.variables.get("$_initiator")
+        if by_user_id != allowed_user:
+            from app.engine.exceptions import AssigneeResolveError
+
+            raise AssigneeResolveError(f"用户 {by_user_id} 无权撤回该任务")
+
+        ensure_task_transition(task.status, TaskStatus.CANCELED)
+        self._transition_task(state, task, TaskStatus.CANCELED, None)
+
+        token.current_key = prev
+        token.path = token.path[: token.path.index(prev)]
+        round_no = token.path.count(prev) + 1
+        new_task = EngineTask(
+            id=uuid4().hex, node_key=prev,
+            node_name=self._dsl.nodes[prev].name,
+            node_type=NodeType.APPROVAL.value,
+            assignee_id=str(by_user_id), round=round_no,
+        )
+        state.tasks[new_task.id] = new_task
+        state.events.append(
+            EngineEvent("task_recalled", prev, {"taskId": task.id, "by": by_user_id})
+        )
+
+    # ---------- 实例级运维操作 ----------
+
+    def terminate(self, state: ExecutionState, reason: str = "") -> None:
+        """管理员强制终止：回收全部活跃任务，实例进入终态。"""
+        ensure_instance_transition(state.status, InstanceStatus.TERMINATED)
+        for t in state.tasks.values():
+            if t.status in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+                self._transition_task(state, t, TaskStatus.CANCELED, None)
+        state.tokens.clear()
+        state.status = InstanceStatus.TERMINATED
+        state.finished_at_reason = reason
+        state.events.append(EngineEvent("workflow_terminated", None, {"reason": reason}))
+
+    def suspend(self, state: ExecutionState, reason: str = "") -> None:
+        """暂停：暂停期间任务不可操作（由服务层拦截）。"""
+        ensure_instance_transition(state.status, InstanceStatus.SUSPENDED)
+        state.status = InstanceStatus.SUSPENDED
+        state.finished_at_reason = reason  # 暂停原因暂存，恢复时清除
+        state.events.append(EngineEvent("workflow_suspended", None, {"reason": reason}))
+
+    def resume(self, state: ExecutionState) -> None:
+        """恢复运行。"""
+        ensure_instance_transition(state.status, InstanceStatus.RUNNING)
+        state.status = InstanceStatus.RUNNING
+        state.finished_at_reason = None
+        state.events.append(EngineEvent("workflow_resumed", None))
+
+    def cancel(self, state: ExecutionState, reason: str = "") -> None:
+        """发起人撤回：仅当尚无任何任务被实际处理时允许（全部 pending/canceled）。"""
+        processed = [
+            t for t in state.tasks.values()
+            if t.status not in (TaskStatus.PENDING, TaskStatus.CANCELED)
+        ]
+        if processed:
+            from app.engine.exceptions import IllegalTransitionError
+
+            raise IllegalTransitionError("已有任务被处理，无法撤回，请使用驳回")
+        ensure_instance_transition(state.status, InstanceStatus.CANCELED)
+        for t in state.tasks.values():
+            if t.status == TaskStatus.PENDING:
+                self._transition_task(state, t, TaskStatus.CANCELED, None)
+        state.tokens.clear()
+        state.status = InstanceStatus.CANCELED
+        state.finished_at_reason = reason
+        state.events.append(EngineEvent("workflow_canceled", None, {"reason": reason}))
+
     # ---------- 内部：推进算法 ----------
 
     def _run(self, state: ExecutionState) -> None:

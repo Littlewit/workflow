@@ -9,12 +9,14 @@ class ApplicationError(Exception):
     Attributes:
         code: 错误码（详细设计 §3.1 错误码总表）。
         message: 人读信息。
+        details: 附加明细（如 DSL 校验逐条错误）。
     """
 
-    def __init__(self, code: int, message: str) -> None:
-        """初始化错误码与信息。"""
+    def __init__(self, code: int, message: str, details: list | dict | None = None) -> None:
+        """初始化错误码、信息与明细。"""
         self.code = code
         self.message = message
+        self.details = details
         super().__init__(message)
 
 
