@@ -9,6 +9,7 @@ import { EyeOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { api } from '../api/workflow'
 import type { DefinitionRow, WorkflowDSL } from '../types'
 import { NODE_SHAPE } from '../types/workflow'
+import { NODE_TYPE_LABELS } from '../constants/status'
 import { DEFINITION_STATUS_META } from '../constants/status'
 import { registerFlowNodes } from '../modules/designer/customNodes'
 
@@ -46,11 +47,11 @@ async function view(row: DefinitionRow) {
   if (!el || !viewState.dsl) return
   const lf = new LogicFlow({ container: el, grid: true, isSilentMode: true })
   registerFlowNodes(lf)
-  let x = 140
-  const nodes = Object.values(viewState.dsl.nodes).map((n) => ({
+  // 按节点声明顺序从左到右平铺（修复：此前缺少 x 递增导致全部节点重叠）
+  const nodes = Object.values(viewState.dsl.nodes).map((n, i) => ({
     id: n.key,
     type: NODE_SHAPE[n.type] ?? 'wf-approval',
-    x,
+    x: 140 + i * 170,
     y: 200,
     text: n.name,
   }))
@@ -140,7 +141,13 @@ onMounted(refresh)
                 { title: '名称', dataIndex: 'name' },
                 { title: '类型', dataIndex: 'type' },
               ]"
-            />
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.dataIndex === 'type'">
+                  {{ NODE_TYPE_LABELS[record.type] ?? record.type }}
+                </template>
+              </template>
+            </a-table>
           </a-collapse-panel>
         </a-collapse>
       </template>

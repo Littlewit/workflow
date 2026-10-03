@@ -46,6 +46,19 @@ export const ACTION_LABELS: Record<string, string> = {
   auto_reject: '系统驳回',
 }
 
+/** 节点类型 → 中文（节点清单用） */
+export const NODE_TYPE_LABELS: Record<string, string> = {
+  start: '发起',
+  end: '结束',
+  approval: '审批节点',
+  cc: '抄送节点',
+  exclusive_gateway: '条件网关',
+  parallel_gateway: '并行网关',
+  subprocess: '子流程',
+  webhook: 'Webhook',
+  script: '脚本',
+}
+
 /** 事件类型 → 中文（时间线用） */
 export const EVENT_LABELS: Record<string, string> = {
   workflow_started: '发起',
