@@ -25,11 +25,12 @@ frontend/src/
 │   ├── auth.ts           # 登录态（token/角色，localStorage 持久化）
 │   └── designer.ts       # 设计器：DSL 唯一事实源 + Undo/Redo 快照栈
 ├── modules/designer/
-│   ├── customNodes.ts    # LogicFlow 审批流风格自定义节点（5 类配色）
-│   ├── mapping.ts        # DSL ↔ 画布数据双向映射
+│   ├── customNodes.ts    # LogicFlow 审批流风格自定义节点（预览/追踪图用）
+│   ├── mapping.ts        # DSL ↔ LogicFlow 画布数据映射（预留）
 │   └── validator.ts      # 画布轻校验（权威校验在后端 parser）
-├── components/form-renderer/   # JSON Schema 表单渲染器（含字段级权限）
+├── components/form-renderer/   # JSON Schema 表单渲染器（字段级权限 + 必填校验）
 └── views/                # 登录/定义列表/设计器/发起/待办/详情/追踪/监控看板
+    └── FlowCanvas.vue    # 自研纵向流程画布（FlowLong 风格：泳道/连线/箭头）
 ```
 
 ## 脚本
@@ -42,7 +43,7 @@ frontend/src/
 
 ## 设计要点
 
-- **DSL 唯一事实源**：画布坐标（`layout`）与 DSL 分离存储，结构变更统一走 `commit()` 入口保证 Undo/Redo 一致
+- **DSL 唯一事实源**：编辑画布为自研纵向布局（`FlowCanvas`，不依赖坐标）；结构变更统一走 `commit()` 入口保证 Undo/Redo 一致，逐键修改自动合并快照
 - **类型同构**：后端 `scripts/export_openapi.py` 导出契约 → `npm run gen:api` 生成类型；CI 用 `git diff` 强制两者同步
 - **前后端双校验**：画布轻校验即时反馈，发布以后端 `parser` 六项权威校验为准
 - **并发友好**：收到 42100（流转锁）/43102（状态已变）自动提示刷新
