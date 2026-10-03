@@ -40,13 +40,27 @@ export const useDesignerStore = defineStore('designer', () => {
   const canUndo = computed(() => past.value.length > 0)
   const canRedo = computed(() => future.value.length > 0)
 
-  /** 结构变更统一入口：先压栈快照，再执行变更，最后版本 +1 触发重渲染。 */
+  /** 选中态一致性：撤销/重做后若选中节点已不存在则清除。 */
+  function syncSelectedKey() {
+    if (store_selected_missing()) selectedKey.value = ''
+  }
+  function store_selected_missing(): boolean {
+    return selectedKey.value !== '' && !(selectedKey.value in dsl.value.nodes)
+  }
+
+  /** 结构变更统一入口：先压栈快照，再执行变更（异常则回滚快照），最后版本 +1。 */
   function commit(mutator: () => void) {
     past.value.push(clone(dsl.value))
-    if (past.value.length > MAX_HISTORY) past.value.shift()
+    if (past.value.length > MAX_HISTORY) past.value.shift() // 栈上限，防内存膨胀
+    try {
+      mutator()
+    } catch (err) {
+      past.value.pop() // 变更失败：快照不入栈，保持撤销语义一致
+      throw err
+    }
     future.value = []
-    mutator()
     version.value++
+    syncSelectedKey()
   }
 
   function undo() {
@@ -55,6 +69,7 @@ export const useDesignerStore = defineStore('designer', () => {
     future.value.push(clone(dsl.value))
     dsl.value = prev
     version.value++
+    syncSelectedKey()
   }
 
   function redo() {
@@ -63,14 +78,17 @@ export const useDesignerStore = defineStore('designer', () => {
     past.value.push(clone(dsl.value))
     dsl.value = next
     version.value++
+    syncSelectedKey()
   }
 
-  /** 加载既有 DSL（打开已保存定义）。 */
+  /** 加载既有 DSL（打开已保存定义）：清空历史与画布残留状态。 */
   function load(existing: { id: string; dsl: WorkflowDSL }) {
     definitionId.value = existing.id
     dsl.value = existing.dsl
     past.value = []
     future.value = []
+    selectedKey.value = ''
+    layout.value = {}
     version.value++
   }
 
@@ -119,16 +137,19 @@ export const useDesignerStore = defineStore('designer', () => {
     })
   }
 
-  /** 更新节点属性（配置面板）。 */
+  /** 更新节点属性（配置面板）；key 不存在时静默忽略（与画布状态解耦）。 */
   function updateNode(key: string, patch: Partial<WfNode>) {
+    if (!(key in dsl.value.nodes)) return
     commit(() => {
       Object.assign(dsl.value.nodes[key], patch)
     })
   }
 
-  /** 连线：在两节点间建立边（画布拖拽连线回调）。 */
+  /** 连线：在两节点间建立边（画布拖拽连线回调）；重复边忽略。 */
   function connect(source: string, target: string) {
     if (source === target) return
+    const exists = dsl.value.edges.some((e) => e.source === source && e.target === target)
+    if (exists) return
     commit(() => {
       dsl.value.edges.push({ source, target })
     })

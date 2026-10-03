@@ -154,8 +154,12 @@ class WorkflowService:
         opinion: str = "",
         variables: dict | None = None,
         operation_id: str | None = None,
+        expected_version: int | None = None,
     ) -> dict:
         """同意任务（含会签票数判定）。
+
+        expected_version：调用方读取实例时看到的 state_version（if-match 语义），
+        提交时不一致说明已被并发修改 → 43102。缺省不校验。
 
         Raises:
             TaskNotFoundError: 任务不存在。
@@ -169,7 +173,8 @@ class WorkflowService:
         async with self._sessions() as session:
             instance = await self._load_instance_by_task(session, task_id)
             self._ensure_not_suspended(instance)
-            if not await self._locks.acquire(instance.id):
+            instance_id = instance.id  # 提前捕获：rollback 会 expire ORM 属性
+            if not await self._locks.acquire(instance_id):
                 raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
             try:
                 state = await self._restore_state(session, instance)
@@ -177,10 +182,11 @@ class WorkflowService:
 
                 WorkflowEngine(state.dsl, self._build_resolvers()).approve(state, task_id, variables)
                 return await self._persist_and_finish(
-                    session, instance, state, task_id, user_id, opinion, op_key
+                    session, instance, state, task_id, user_id, opinion, op_key, expected_version
                 )
+
             finally:
-                await self._locks.release(instance.id)
+                await self._locks.release(instance_id)
 
     # ---------- 用例：驳回 ----------
 
@@ -200,7 +206,8 @@ class WorkflowService:
         async with self._sessions() as session:
             instance = await self._load_instance_by_task(session, task_id)
             self._ensure_not_suspended(instance)
-            if not await self._locks.acquire(instance.id):
+            instance_id = instance.id  # 提前捕获：rollback 会 expire ORM 属性
+            if not await self._locks.acquire(instance_id):
                 raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
             try:
                 state = await self._restore_state(session, instance)
@@ -211,7 +218,7 @@ class WorkflowService:
                     session, instance, state, task_id, user_id, opinion, op_key
                 )
             finally:
-                await self._locks.release(instance.id)
+                await self._locks.release(instance_id)
 
     # ---------- 用例：待办 ----------
 
@@ -245,7 +252,8 @@ class WorkflowService:
         async with self._sessions() as session:
             instance = await self._load_instance_by_task(session, task_id)
             self._ensure_not_suspended(instance)
-            if not await self._locks.acquire(instance.id):
+            instance_id = instance.id  # 提前捕获：rollback 会 expire ORM 属性
+            if not await self._locks.acquire(instance_id):
                 raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
             try:
                 state = await self._restore_state(session, instance)
@@ -257,7 +265,7 @@ class WorkflowService:
                     session, instance, state, task_id, user_id, opinion, op_key
                 )
             finally:
-                await self._locks.release(instance.id)
+                await self._locks.release(instance_id)
 
     async def recall(self, task_id: str, user_id: str, operation_id: str | None = None) -> dict:
         """撤回已提交的任务（下一节点未处理时）。"""
@@ -267,14 +275,18 @@ class WorkflowService:
 
         async with self._sessions() as session:
             instance = await self._load_instance_by_task(session, task_id)
-            if not await self._locks.acquire(instance.id):
+            self._ensure_not_suspended(instance)
+            instance_id = instance.id  # 提前捕获：rollback 会 expire ORM 属性
+            if not await self._locks.acquire(instance_id):
                 raise TaskConflictError(42100, "实例正在流转中，请稍后重试")
             try:
                 state = await self._restore_state(session, instance)
                 WorkflowEngine(state.dsl, self._build_resolvers()).recall(state, task_id, user_id)
-                return await self._persist_and_finish(session, instance, state, task_id, user_id, "", op_key)
+                return await self._persist_and_finish(
+                    session, instance, state, task_id, user_id, "", op_key
+                )
             finally:
-                await self._locks.release(instance.id)
+                await self._locks.release(instance_id)
 
     async def list_done(self, assignee_id: str) -> list[dict]:
         """查询某人已办任务摘要。"""
@@ -318,6 +330,7 @@ class WorkflowService:
 
     async def _handle_overdue(self, task_id: str, now: datetime) -> bool:
         """处理单个超时任务，返回是否实际执行了策略。"""
+        from app.domain.enums import TaskAction
         from app.domain.enums import TaskStatus as _TS
         from app.engine.executor import EngineEvent
 
@@ -325,7 +338,8 @@ class WorkflowService:
             instance = await self._load_instance_by_task(session, task_id)
             if instance is None or instance.status != InstanceStatus.RUNNING.value:
                 return False
-            if not await self._locks.acquire(instance.id):
+            instance_id = instance.id  # 提前捕获：rollback 会 expire ORM 属性
+            if not await self._locks.acquire(instance_id):
                 return False  # 正在人工流转：下一轮再处理
             try:
                 state = await self._restore_state(session, instance)
@@ -342,21 +356,31 @@ class WorkflowService:
                     return False
                 if policy.action == "auto_approve":
                     engine.approve(state, task_id)
+                    state.tasks[task_id].action = TaskAction.AUTO_APPROVE  # 审计区分系统动作
                 elif policy.action == "auto_reject":
                     engine.reject(state, task_id)
+                    state.tasks[task_id].action = TaskAction.AUTO_REJECT
                 elif policy.action == "transfer_to":
                     if not policy.transfer_to:
                         return False
-                    # 系统代为转交：以原处理人身份执行转办
+                    # 系统代为转交：以原处理人身份执行转办（action=TRANSFER 由引擎记录）
                     engine.transfer(state, task_id, task.assignee_id, policy.transfer_to)
-                else:  # notify：仅记录提醒事件，由 Outbox 发送通知
+                else:  # notify：仅记录提醒事件（同一任务只提醒一次）
+                    already = (await session.execute(
+                        select(InstanceEvent.payload).where(
+                            InstanceEvent.instance_id == instance.id,
+                            InstanceEvent.event_type == "timeout_triggered",
+                        )
+                    )).scalars().all()
+                    if any(p.get("taskId") == task_id for p in already):
+                        return False
                     state.events.append(
                         EngineEvent("timeout_triggered", node.key, {"taskId": task_id, "policy": "notify"})
                     )
                 await self._persist_and_finish(session, instance, state, task_id, "system", "", None)
                 return True
             finally:
-                await self._locks.release(instance.id)
+                await self._locks.release(instance_id)
 
     # ---------- 用例：实例运维与查询 ----------
 
@@ -375,7 +399,14 @@ class WorkflowService:
             try:
                 state = await self._restore_state(session, instance)
                 engine = WorkflowEngine(state.dsl, self._build_resolvers())
-                getattr(engine, op_name)(state, reason) if op_name != "resume" else engine.resume(state)
+                if op_name == "terminate":
+                    engine.terminate(state, reason)
+                elif op_name == "suspend":
+                    engine.suspend(state, reason)
+                elif op_name == "cancel":
+                    engine.cancel(state, reason)
+                else:
+                    engine.resume(state)
                 return await self._persist_and_finish(session, instance, state, "", "", "", None)
             finally:
                 await self._locks.release(instance_id)
@@ -511,8 +542,16 @@ class WorkflowService:
         user_id: str,
         opinion: str,
         op_key: str | None,
+        expected_version: int | None = None,
     ) -> dict:
-        """统一落库：快照 + 镜像 + 事件 + 意见，提交后返回结果。"""
+        """统一落库：快照 + 镜像 + 事件 + 意见，提交后返回结果。
+
+        expected_version：加载实例时的乐观锁版本；与当前不一致说明并发修改，
+        回滚并抛 43102（Redis 锁失效/降级场景下的兜底防线）。
+        """
+        if expected_version is not None and instance.state_version != expected_version:
+            await session.rollback()
+            raise TaskConflictError(43102, "实例状态已被并发修改，请刷新后重试")
         instance.status = state.status.value
         instance.current_node_keys = [t.current_key for t in state.tokens.values()]
         instance.engine_state = serialize_state(state)

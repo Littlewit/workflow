@@ -35,6 +35,7 @@ def serialize_state(state: ExecutionState) -> dict:
         "tasks": serialize_tasks(state),
         "tokens": [asdict(t) for t in state.tokens.values()],
         "joinArrivals": state.join_arrivals,
+        "finishedAtReason": state.finished_at_reason,
     }
 
 
@@ -68,6 +69,7 @@ def deserialize_state(dsl: WorkflowDSL, instance_id: str, data: dict) -> Executi
         tasks=tasks,
         tokens=tokens,
         join_arrivals={k: list(v) for k, v in data.get("joinArrivals", {}).items()},
+        finished_at_reason=data.get("finishedAtReason"),
     )
 
 

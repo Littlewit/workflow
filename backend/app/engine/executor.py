@@ -35,6 +35,11 @@ from app.engine.resolvers import ResolverRegistry
 from app.engine.state_machine import ensure_instance_transition, ensure_task_transition
 
 
+def _last_index(items: list[str], value: str) -> int:
+    """返回 value 在列表中最后一次出现的下标（调用方保证 value 存在）。"""
+    return len(items) - 1 - items[::-1].index(value)
+
+
 @dataclass
 class EngineEvent:
     """领域事件（类型与 payload 见详细设计 §2.10 数据字典）。"""
@@ -199,9 +204,10 @@ class WorkflowEngine:
         token = self._token_of_node(state, task.node_key)
 
         # 定位 target 在路径中的位置；start 初次经过不产生任务故不在 path 中，视作路径起点
+        # 用"最后一次出现"的位置：同节点多轮驳回时保留历史轮次，round 才能持续递增
         start_key = next(k for k, n in self._dsl.nodes.items() if n.type == NodeType.START)
         if target in token.path:
-            t_idx = token.path.index(target)
+            t_idx = _last_index(token.path, target)
         elif target == start_key:
             t_idx = 0
         else:
@@ -216,7 +222,7 @@ class WorkflowEngine:
         )
         # 在目标节点重建任务；path 截断到 target（含），_enter_node 会再次 append 以递增轮次
         token.current_key = target
-        token.path = token.path[:t_idx] + ([target] if target in token.path else [])
+        token.path = token.path[:t_idx] + [target]
         self._enter_node(state, token)
 
     def transfer(self, state: ExecutionState, task_id: str, by_user_id: str, to_user_id: str) -> str:
@@ -235,7 +241,11 @@ class WorkflowEngine:
 
         new_task = EngineTask(
             id=uuid4().hex, node_key=task.node_key, node_name=task.node_name,
-            node_type=task.node_type, assignee_id=to_user_id, round=task.round,
+            node_type=task.node_type, token_id=task.token_id,
+            assignee_id=to_user_id, round=task.round,
+            # 会签分组/截止时间必须继承，否则转办后票数统计与超时策略失效
+            counter_sign_group_id=task.counter_sign_group_id,
+            deadline_at=task.deadline_at,
         )
         state.tasks[new_task.id] = new_task
         state.events.append(
@@ -281,13 +291,18 @@ class WorkflowEngine:
         ensure_task_transition(task.status, TaskStatus.CANCELED)
         self._transition_task(state, task, TaskStatus.CANCELED, None)
 
+        # 回退路径：保留 prev 本身（后续驳回/轮次计数依赖历史记录），只截掉其后的节点
         token.current_key = prev
-        token.path = token.path[: token.path.index(prev)]
-        round_no = token.path.count(prev) + 1
+        token.path = token.path[: token.path.index(prev) + 1]
+        # round = 该节点历史最大轮次 + 1（撤回重走与驳回重走口径一致）
+        round_no = max(
+            (t.round for t in state.tasks.values() if t.node_key == prev), default=0
+        ) + 1
         new_task = EngineTask(
             id=uuid4().hex, node_key=prev,
             node_name=self._dsl.nodes[prev].name,
             node_type=NodeType.APPROVAL.value,
+            token_id=token.id,
             assignee_id=str(by_user_id), round=round_no,
         )
         state.tasks[new_task.id] = new_task
@@ -583,6 +598,8 @@ class WorkflowEngine:
         group = [
             t for t in state.tasks.values()
             if t.counter_sign_group_id == task.counter_sign_group_id
+            # 转办任务已被承接人任务取代：不计入票数，否则 ALL 永远凑不满
+            and t.status != TaskStatus.TRANSFERRED
         ]
         total = len(group)
         approved = sum(1 for t in group if t.status == TaskStatus.APPROVED)
@@ -656,7 +673,11 @@ class WorkflowEngine:
         if policy in (None, "initiator"):
             return next(k for k, n in self._dsl.nodes.items() if n.type == NodeType.START)
         if policy == "previous":
-            approvals = [k for k in reversed(token.path[:-1])]
+            # 只回退到审批节点（跳过 start/网关等非任务节点）
+            approvals = [
+                k for k in reversed(token.path[:-1])
+                if isinstance(self._dsl.nodes[k], ApprovalNode)
+            ]
             if not approvals:
                 raise WorkflowConfigError("路径上没有可驳回的历史审批节点")
             return approvals[0]

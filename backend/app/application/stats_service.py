@@ -4,7 +4,6 @@
 减法不可移植），数据量可控（MVP 千级实例）。
 """
 
-from datetime import datetime, timezone
 from statistics import mean
 
 from sqlalchemy import select
@@ -89,8 +88,3 @@ class StatsService:
         ]
         items.sort(key=lambda x: float(x["avgStayMs"]), reverse=True)  # type: ignore[arg-type]
         return items[:limit]
-
-
-def utc_now() -> datetime:
-    """当前 UTC 时间（供测试引用）。"""
-    return datetime.now(timezone.utc)

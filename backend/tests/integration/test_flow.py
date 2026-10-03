@@ -97,6 +97,36 @@ class TestSerialFlowE2E:
         with pytest.raises(BusinessKeyDuplicateError):
             await service.start_instance(definition_code=dsl.code, initiator_id="u0", business_key="B-1")
 
+    async def test_optimistic_lock_conflict(self, svc) -> None:
+        """调用方提交的 expected_version 与服务端不一致 → 43102（if-match）。"""
+        from sqlalchemy import select
+
+        from app.application.errors import TaskConflictError
+        from app.infra.models.instance import WorkflowInstance
+
+        service, factory = svc
+        dsl = simple_serial_dsl()
+        await publish_definition(factory, dsl)
+        started = await service.start_instance(definition_code=dsl.code, initiator_id="boss-1")
+        task_id = started["tasks"][0]["taskId"]
+
+        # 模拟并发：外部把 state_version 抬高（相当于另一事务已提交新状态）
+        async with factory() as session:
+            row = (await session.execute(
+                select(WorkflowInstance).where(WorkflowInstance.id == started["instanceId"])
+            )).scalar_one()
+            row.state_version += 5
+            await session.commit()
+
+        # 调用方仍持旧版本 1 提交 → 43102
+        with pytest.raises(TaskConflictError) as exc_info:
+            await service.approve(task_id, "user-of-approve_1", expected_version=1)
+        assert exc_info.value.code == 43102
+
+        # 提交正确版本 → 成功
+        result = await service.approve(task_id, "user-of-approve_1", expected_version=6)
+        assert result["instanceStatus"] == "completed"
+
 
 class TestRejectCycleE2E:
     """端到端：发起 → 驳回到发起人 → 修改重提交 → 完成。"""

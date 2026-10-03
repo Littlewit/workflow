@@ -53,11 +53,20 @@ class WebhookOutbound:
         self._client = client or httpx.AsyncClient(timeout=10.0)
         self._base_backoff = base_backoff_seconds
 
+    async def aclose(self) -> None:
+        """释放底层 HTTP 连接池（worker 任务结束时调用，防连接泄漏）。"""
+        await self._client.aclose()
+
     async def send(
         self, instance_id: str, event_type: str, url: str,
         body: dict, secret: str = "", max_retries: int = 3,
+        event_id: str | None = None,
     ) -> WebhookOutcome:
-        """执行投递（含重试循环），并写 webhook_delivery 记录。"""
+        """执行投递（含重试循环），并写 webhook_delivery 记录。
+
+        max_retries=0 时为单次投递（Outbox 循环承担重试节奏），
+        失败状态记为 failed（可重试）而非 dead（死信）。
+        """
         delivery_id = uuid4().hex
         payload = json.dumps(body, ensure_ascii=False, default=str)
         last_code: int | None = None
@@ -79,7 +88,9 @@ class WebhookOutbound:
                 resp = await self._client.post(url, content=payload, headers=headers)
                 last_code = resp.status_code
                 if 200 <= resp.status_code < 300:
-                    await self._record(instance_id, delivery_id, url, body, "success", last_code, attempt, None)
+                    await self._record(
+                        instance_id, delivery_id, event_id, url, body, "success", last_code, attempt, None
+                    )
                     return WebhookOutcome(delivery_id, "success", last_code, attempt)
                 last_error = f"HTTP {resp.status_code}"
             except httpx.HTTPError as exc:  # 网络类错误：连接拒绝/超时等
@@ -90,18 +101,22 @@ class WebhookOutbound:
                 # 指数退避（事件循环内 sleep，测试可把 base 调到毫秒级）
                 await asyncio.sleep(self._base_backoff * (2**attempt))
 
-        await self._record(instance_id, delivery_id, url, body, "dead", last_code, attempts - 1, last_error)
-        return WebhookOutcome(delivery_id, "dead", last_code, attempts - 1)
+        # 重试耗尽置死信；单次投递（max_retries=0）失败记 failed，交由 Outbox 循环重试
+        status = "failed" if max_retries == 0 else "dead"
+        await self._record(
+            instance_id, delivery_id, event_id, url, body, status, last_code, attempts - 1, last_error
+        )
+        return WebhookOutcome(delivery_id, status, last_code, attempts - 1)
 
     async def _record(
-        self, instance_id: str, delivery_id: str, url: str, body: dict,
+        self, instance_id: str, delivery_id: str, event_id: str | None, url: str, body: dict,
         status: str, code: int | None, retries: int, error: str | None,
     ) -> None:
         """落库投递记录。"""
         async with self._sessions() as session:
             session.add(
                 WebhookDelivery(
-                    id=delivery_id, instance_id=instance_id, url=url,
+                    id=delivery_id, instance_id=instance_id, event_id=event_id, url=url,
                     request_body=body, status=status, response_code=code,
                     retry_count=retries, error_message=error,
                     created_at=datetime.now(timezone.utc),

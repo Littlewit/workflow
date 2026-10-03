@@ -11,14 +11,24 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from app.api.container import get_session_factory
-from app.application.outbox import dispatch_pending_events
+from app.application.outbox import EventRouter, dispatch_pending_events
+from app.application.webhook import WebhookOutbound
 from app.application.workflow_service import WorkflowService
 from app.core.config import get_settings
 
 
 async def outbox_dispatch(ctx: dict) -> None:
-    """投递未派发事件（at-least-once，接收方幂等）。"""
-    count = await dispatch_pending_events(get_session_factory())
+    """投递未派发事件（at-least-once，接收方幂等）。
+
+    webhook_invoked 事件经 EventRouter 走 HTTP 出站（单次投递，
+    重试由 cron 周期驱动，避免长退避阻塞整批扫描）。
+    """
+    factory = get_session_factory()
+    webhook = WebhookOutbound(factory, base_backoff_seconds=0)
+    try:
+        count = await dispatch_pending_events(factory, EventRouter(webhook))
+    finally:
+        await webhook.aclose()
     if count:
         ctx["logger"].info("outbox dispatched %s events", count)
 
