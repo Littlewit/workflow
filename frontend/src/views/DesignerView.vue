@@ -22,6 +22,8 @@ const issues = ref<Array<{ level: string; message: string }>>([])
 const saving = ref(false)
 // 节点右键上下文菜单
 const ctx = reactive({ visible: false, x: 0, y: 0, nodeKey: '' })
+// 菜单打开时间戳：原生 contextmenu 冒泡到 window 的同一事件里不能立刻关闭（时序保护）
+let ctxOpenedAt = 0
 let lf: LogicFlow | null = null
 
 // DSL 结构变化 → 重渲染画布（布局坐标保持用户拖拽结果）
@@ -69,6 +71,7 @@ onMounted(async () => {
       ctx.x = x
       ctx.y = y
       ctx.visible = true
+      ctxOpenedAt = Date.now()
     },
     onBlankContextMenu: () => (ctx.visible = false),
   })
@@ -81,8 +84,10 @@ onMounted(async () => {
 function closeCtxMenu() {
   ctx.visible = false
 }
-// 右键点在菜单外（画布空白由 onBlankContextMenu 处理，其它区域在此兜底）
+// 右键点在菜单外（画布空白由 onBlankContextMenu 处理，其它区域在此兜底）。
+// 打开后 150ms 内的 contextmenu 冒泡是"打开菜单"这一事件本身，忽略之。
 function onWindowContextmenu(e: MouseEvent) {
+  if (Date.now() - ctxOpenedAt < 150) return
   if (!(e.target as HTMLElement)?.closest('.ctx-menu')) closeCtxMenu()
 }
 

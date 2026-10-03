@@ -52,8 +52,8 @@ export function bindCanvasEvents(
     handlers.onEdgeDeleted(data.sourceNodeId as string, data.targetNodeId as string))
   // 右键节点：阻止浏览器默认菜单，回调节点 key 与屏幕坐标（供自定义菜单定位）
   lf.on('node:contextmenu', ({ data, e }: { data: { id: string }; e: MouseEvent }) => {
-    e.preventDefault()
-    handlers.onNodeContextMenu(data.id as string, e.clientX, e.clientY)
+    e?.preventDefault?.()
+    handlers.onNodeContextMenu(data.id as string, e?.clientX ?? 0, e?.clientY ?? 0)
   })
   lf.on('blank:contextmenu', ({ e }: { e: MouseEvent }) => {
     e.preventDefault()
