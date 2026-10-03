@@ -8,7 +8,9 @@ import {
   CarryOutOutlined,
   ClusterOutlined,
   DashboardOutlined,
+  LogoutOutlined,
   SendOutlined,
+  UserOutlined,
 } from '@ant-design/icons-vue'
 import { useAuthStore } from './stores/auth'
 
@@ -25,6 +27,11 @@ const showBack = computed(() => route.meta.back === true)
 function onLogout() {
   auth.logout()
   router.push('/login')
+}
+
+/** 用户下拉菜单：仅"退出登录"可点击。 */
+function onUserMenuClick({ key }: { key: string | number }) {
+  if (key === 'logout') onLogout()
 }
 
 /** 左侧菜单点击跳转（antd MenuInfo 的 key 为 string | number）。 */
@@ -91,9 +98,29 @@ function onMenuClick(info: { key: string | number }) {
           </a-button>
           <span class="app-header-title">{{ route.meta.title ?? '' }}</span>
         </div>
-        <a-button v-if="auth.isLoggedIn" type="link" @click="onLogout">
-          退出（{{ auth.userId }}）
-        </a-button>
+        <a-dropdown v-if="auth.isLoggedIn" placement="bottomRight">
+          <div class="user-chip">
+            <a-avatar size="28" style="background: #1677ff">
+              {{ auth.username.charAt(0).toUpperCase() }}
+            </a-avatar>
+            <span class="user-name">{{ auth.username }}</span>
+            <a-tag v-if="auth.isAdmin" color="blue" style="margin-left: 4px">管理员</a-tag>
+            <DownOutlined style="font-size: 10px; color: #999" />
+          </div>
+          <template #overlay>
+            <a-menu @click="onUserMenuClick">
+              <a-menu-item key="profile" disabled>
+                <UserOutlined style="margin-right: 6px" />
+                用户ID：{{ auth.userId }}
+              </a-menu-item>
+              <a-menu-divider />
+              <a-menu-item key="logout" danger>
+                <LogoutOutlined style="margin-right: 6px" />
+                退出登录
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
       </a-layout-header>
       <a-layout-content class="app-content" style="overflow: auto; height: calc(100vh - 64px)">
         <router-view />
@@ -125,6 +152,21 @@ function onMenuClick(info: { key: string | number }) {
 }
 .app-content {
   padding: 24px;
+}
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+.user-chip:hover {
+  background: #f0f0f0;
+}
+.user-name {
+  font-size: 14px;
 }
 @media (max-width: 768px) {
   .app-content {
