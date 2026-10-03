@@ -13,6 +13,7 @@ import {
 import { api } from '../api/workflow'
 import { useAuthStore } from '../stores/auth'
 import { TASK_STATUS_META } from '../constants/status'
+import DonutChart from '../components/charts/DonutChart.vue'
 
 const auth = useAuthStore()
 const overview = ref<{
@@ -47,18 +48,23 @@ const statCards = computed(() => [
   { title: '任务总数', value: Object.values(overview.value?.taskCounts ?? {}).reduce((a, b) => a + b, 0), suffix: '', icon: CarryOutOutlined, color: '#fa8c16', bg: '#fff7e6' },
 ])
 
-// 状态分布占比（用于进度条展示）
+// 状态分布占比（环形图数据）
 const instanceDistribution = computed(() =>
-  Object.entries(overview.value?.instanceCounts ?? {}).map(([status, count]) => {
-    const total = Object.values(overview.value?.instanceCounts ?? {}).reduce((a, b) => a + b, 0)
-    return {
-      status,
-      label: STATUS_LABELS[status] ?? status,
-      count,
-      color: STATUS_COLORS[status] ?? '#8c8c8c',
-      percent: total ? Math.round((count / total) * 100) : 0,
-    }
-  }),
+  Object.entries(overview.value?.instanceCounts ?? {}).map(([status, count]) => ({
+    status,
+    label: STATUS_LABELS[status] ?? status,
+    count,
+    color: STATUS_COLORS[status] ?? '#8c8c8c',
+  })),
+)
+
+// 任务状态分布（环形图数据）
+const taskDistribution = computed(() =>
+  Object.entries(overview.value?.taskCounts ?? {}).map(([status, count]) => ({
+    name: TASK_STATUS_META[status]?.label ?? status,
+    value: count,
+    color: { pending: '#1677ff', processing: '#13c2c2', approved: '#52c41a', rejected: '#ff4d4f', transferred: '#722ed1', canceled: '#8c8c8c', timeout_auto: '#fa8c16' }[status] ?? '#8c8c8c',
+  })),
 )
 
 onMounted(async () => {
@@ -104,19 +110,15 @@ onMounted(async () => {
       </a-row>
 
       <a-row :gutter="16">
-        <!-- 实例状态分布 -->
+        <!-- 实例状态分布（环形图） -->
         <a-col :xs="24" :md="10" style="margin-bottom: 8px">
           <a-card title="实例状态分布">
-            <div v-for="item in instanceDistribution" :key="item.status" class="dist-row">
-              <div class="dist-label">{{ item.label }}（{{ item.count }}）</div>
-              <a-progress
-                :percent="item.percent"
-                size="small"
-                :stroke-color="item.color"
-                :format="() => item.percent + '%'"
-              />
-            </div>
-            <a-empty v-if="!instanceDistribution.length" description="暂无实例数据" />
+            <DonutChart
+              v-if="instanceDistribution.length"
+              :data="instanceDistribution.map((d) => ({ name: d.label, value: d.count, color: d.color }))"
+              height="240px"
+            />
+            <a-empty v-else description="暂无实例数据" />
           </a-card>
         </a-col>
 
@@ -140,17 +142,13 @@ onMounted(async () => {
         </a-col>
       </a-row>
 
-      <!-- 任务状态分布 -->
+      <!-- 任务状态分布（环形图） -->
       <a-card title="任务状态分布" style="margin-top: 8px">
-        <a-space wrap>
-          <a-tag
-            v-for="(count, status) in overview?.taskCounts ?? {}"
-            :key="status"
-            :color="TASK_STATUS_META[status]?.color ?? 'default'"
-          >
-            {{ TASK_STATUS_META[status]?.label ?? status }}: {{ count }}
-          </a-tag>
-        </a-space>
+        <DonutChart
+          v-if="Object.keys(overview?.taskCounts ?? {}).length"
+          :data="taskDistribution"
+          height="240px"
+        />
         <div v-if="!Object.keys(overview?.taskCounts ?? {}).length" style="text-align: center; padding: 16px 0">
           <a-empty description="暂无任务数据" />
         </div>
