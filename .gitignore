@@ -16,6 +16,9 @@ venv/
 frontend/dist/
 frontend/tsconfig.tsbuildinfo
 
+# 测试工具临时产物（playwright-cli 快照/日志/截图）
+.playwright-cli/
+
 # IDE
 .idea/
 .vscode/*
