@@ -100,46 +100,60 @@ export const useDesignerStore = defineStore('designer', () => {
   }
 
   /**
-   * 自动布局（结构变化后调用）：从 start 出发 BFS 得到流程顺序，
-   * 所有节点按序从左到右平铺（间距 170）。end 节点会自然排在最右，
-   * 避免"新增节点与结束节点重叠"。
+   * 自动布局（结构变化后调用）：按"从 start 出发的最长路径深度"分层，
+   * 同层节点垂直居中错开（分支呈现为并行泳道），x 按深度递增。
+   * 效果：网关的分支节点垂直并列，end 固定在最右。
    */
   function autoLayout() {
     const nodes = dsl.value.nodes
-    const startKey = Object.keys(nodes).find((k) => nodes[k].type === 'start')
+    const nodeKeys = Object.keys(nodes)
+    const startKey = nodeKeys.find((k) => nodes[k].type === 'start')
+
+    // 出边表
     const out = new Map<string, string[]>()
     for (const e of dsl.value.edges) {
       out.set(e.source, [...(out.get(e.source) ?? []), e.target])
     }
-    // BFS：按流程先后顺序排列
-    const order: string[] = []
-    const seen = new Set<string>()
-    const queue = startKey ? [startKey] : []
-    if (startKey) seen.add(startKey)
-    while (queue.length) {
-      const cur = queue.shift() as string
-      order.push(cur)
-      for (const t of out.get(cur) ?? []) {
-        if (!seen.has(t)) {
-          seen.add(t)
-          queue.push(t)
+
+    // 深度 = 最长路径（多轮松弛，兼容少量环；不可达节点深度按可达最大值+1 追加）
+    const depth = new Map<string, number>()
+    if (startKey) depth.set(startKey, 0)
+    for (let round = 0; round < nodeKeys.length; round++) {
+      for (const [src, targets] of out) {
+        const d = depth.get(src)
+        if (d === undefined) continue
+        for (const t of targets) {
+          if ((depth.get(t) ?? -1) < d + 1) depth.set(t, d + 1)
         }
       }
     }
-    // 不可达节点（孤立/异常草稿）排在末尾，避免丢节点
-    for (const k of Object.keys(nodes)) {
-      if (!seen.has(k)) order.push(k)
+    // 不可达节点：深度 = 已知最大深度 + 1
+    const maxKnown = Math.max(-1, ...depth.values())
+    for (const k of nodeKeys) {
+      if (!depth.has(k)) depth.set(k, maxKnown + 1)
     }
-    // end 节点固定排最右（多分支时 BFS 可能提前到达 end）
-    const endIdx = order.indexOf('end')
-    if (endIdx >= 0) {
-      order.splice(endIdx, 1)
-      order.push('end')
+    // end 节点固定排最后一列（分支汇合点视觉收敛）
+    const endKey = nodeKeys.find((k) => nodes[k].type === 'end')
+    if (endKey) {
+      const maxDepth = Math.max(-1, ...[...depth.values()])
+      depth.set(endKey, maxDepth + 1)
     }
+
+    // 分层分组：同层节点垂直居中排布
+    const levels = new Map<number, string[]>()
+    for (const k of nodeKeys) {
+      const d = depth.get(k) ?? 0
+      levels.set(d, [...(levels.get(d) ?? []), k])
+    }
+
     const next: Record<string, { x: number; y: number }> = {}
-    order.forEach((k, i) => {
-      next[k] = { x: 120 + i * 170, y: 200 }
-    })
+    for (const [d, keys] of levels) {
+      keys.forEach((k, i) => {
+        // 同层多节点时垂直对称错开（层间距 110）
+        const offsetY = (i - (keys.length - 1) / 2) * 110
+        next[k] = { x: 120 + d * 180, y: 200 + offsetY }
+      })
+    }
     layout.value = next
   }
 
@@ -169,17 +183,9 @@ export const useDesignerStore = defineStore('designer', () => {
       if (sel && sel in dsl.value.nodes && sel !== key) {
         const selNode = dsl.value.nodes[sel]
         if (selNode.type === 'exclusive_gateway') {
-          const outEdges = dsl.value.edges.filter((e) => e.source === sel)
-          // 初始态（网关直连 end）：改写为 gw→new→end，让新节点真正落在主路径上
-          if (outEdges.length === 1 && outEdges[0].target === 'end') {
-            dsl.value.edges = dsl.value.edges.filter((e) => e !== outEdges[0])
-            dsl.value.edges.push({ source: sel, target: key })
-            dsl.value.edges.push({ source: key, target: 'end' })
-          } else {
-            // 已有真实分支：追加新分支边，可连续添加多个
-            dsl.value.edges.push({ source: sel, target: key })
-            dsl.value.edges.push({ source: key, target: 'end' })
-          }
+          // 网关：每次添加都是追加一个分支（gw→new→end），既有分支不动
+          dsl.value.edges.push({ source: sel, target: key })
+          dsl.value.edges.push({ source: key, target: 'end' })
         } else {
           // 普通节点：唯一出边 sel→X 改写为 sel→new→X（链式插入）
           const outEdge = dsl.value.edges.find((e) => e.source === sel)
