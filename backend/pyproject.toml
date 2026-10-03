@@ -7,6 +7,8 @@ requires-python = ">=3.10"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# alembic/versions 为自动生成代码，不做 lint
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]  # 基础错误 + isort 导入排序 + pyupgrade + bugbear

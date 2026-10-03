@@ -18,9 +18,9 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
+import app.infra.models  # noqa: E402,F401  # 确保全部模型已注册到 Base.metadata
 from app.core.config import get_settings  # noqa: E402
 from app.infra.db import Base  # noqa: E402
-import app.infra.models  # noqa: E402,F401  # 确保全部模型已注册到 Base.metadata
 
 target_metadata = Base.metadata
 

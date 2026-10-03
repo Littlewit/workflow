@@ -4,6 +4,8 @@
 SQLAlchemy 2.0 的 Uuid/JSON/DateTime 类型在两种后端上均可工作。
 """
 
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -36,7 +38,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI 依赖：请求级 Session，随请求结束自动关闭。"""
     async with get_session_factory()() as session:
         yield session
