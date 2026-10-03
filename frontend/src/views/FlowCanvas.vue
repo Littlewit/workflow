@@ -111,29 +111,36 @@ function branchTargetName(b: TreeBranch): string {
       </template>
 
       <template v-else>
+        <!-- 分支泳道：外层容器负责定位，内层 lane 绘制汇聚线 -->
         <div class="flow-branches">
-          <div v-for="(b, bi) in item.branches" :key="b.branchKey" class="flow-branch">
-            <div
-              class="flow-branch-tag"
-              :class="{ 'is-default': isDefaultBranch(item.gatewayKey, b.branchKey), unset: !isDefaultBranch(item.gatewayKey, b.branchKey) && !branchCondition(item.gatewayKey, b.branchKey) }"
-              @click="emit('openCondition', item.gatewayKey, b.branchKey, branchTargetName(b))"
-            >
-              <span class="flow-branch-priority">{{ priorityLabel(item.gatewayKey, bi) }}</span>
-              <span class="flow-branch-cond">
-                {{ b.isDefault ? '其他条件进入此流程' : branchCondition(item.gatewayKey, b.branchKey) || '请设置条件' }}
-              </span>
+          <div class="flow-lane">
+            <div v-for="(b, bi) in item.branches" :key="b.branchKey" class="flow-branch">
+              <!-- 分支上下接入短线：把分支与泳道汇聚线连成一体（先渲染，位于卡片层之下） -->
+              <span class="lane-stub lane-stub-top" />
+              <span class="lane-stub lane-stub-bottom" />
+              <div
+                class="flow-branch-tag"
+                :class="{ 'is-default': isDefaultBranch(item.gatewayKey, b.branchKey), unset: !isDefaultBranch(item.gatewayKey, b.branchKey) && !branchCondition(item.gatewayKey, b.branchKey) }"
+                @click="emit('openCondition', item.gatewayKey, b.branchKey, branchTargetName(b))"
+              >
+                <span class="flow-branch-priority">{{ priorityLabel(item.gatewayKey, bi) }}</span>
+                <span class="flow-branch-cond">
+                  {{ b.isDefault ? '其他条件进入此流程' : branchCondition(item.gatewayKey, b.branchKey) || '请设置条件' }}
+                </span>
+              </div>
+              <FlowCanvas
+                :items="b.items"
+                :dsl="dsl"
+                :depth="(depth ?? 0) + 1"
+                @select="(k: string) => emit('select', k)"
+                @insert-after="(prev: string) => emit('insertAfter', prev, 'approval')"
+                @append-branch="(g: string) => emit('appendBranch', g, 'approval')"
+                @open-condition="(g: string, bk: string, tn: string) => emit('openCondition', g, bk, tn)"
+                @remove="(k: string) => emit('remove', k)"
+              />
             </div>
-            <FlowCanvas
-              :items="b.items"
-              :dsl="dsl"
-              :depth="(depth ?? 0) + 1"
-              @select="(k: string) => emit('select', k)"
-              @insert-after="(prev: string) => emit('insertAfter', prev, 'approval')"
-              @append-branch="(g: string) => emit('appendBranch', g, 'approval')"
-              @open-condition="(g: string, bk: string, tn: string) => emit('openCondition', g, bk, tn)"
-              @remove="(k: string) => emit('remove', k)"
-            />
           </div>
+          <!-- 添加分支：骑在顶部汇聚线中点（与节点间 + 号一致的交互暗示） -->
           <div class="flow-add-branch" @click.stop="emit('appendBranch', item.gatewayKey, 'approval')">
             ＋ 添加分支
           </div>
@@ -178,19 +185,64 @@ function branchTargetName(b: TreeBranch): string {
 .type-approval { border-color: #ffd591; }
 .type-cc .flow-card-head { background: #8c8c8c; color: #fff; }
 .type-cc { border-color: #d9d9d9; }
+/* ---------- 交互连线（FlowLong 风格）---------- */
+/* 连线统一色：浅灰，与卡片描边区分 */
 .flow-plus {
+  position: relative; /* 作为上下连线的定位基准 */
   width: 26px; height: 26px; border-radius: 50%;
   background: #1677ff; color: #fff;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; margin: 6px 0; font-size: 14px; user-select: none;
 }
+/* 节点间竖向连线：+ 号圆上下各延伸 6px，恰好补齐与相邻卡片之间的 margin 间隙 */
+.flow-plus::before,
+.flow-plus::after {
+  content: ''; position: absolute; left: 50%; width: 2px; margin-left: -1px;
+  background: #caccd9;
+}
+.flow-plus::before { top: -6px; height: 6px; }        /* 上段：补齐 margin-top 间隙 */
+.flow-plus::after { top: 100%; bottom: -6px; }        /* 下段：补齐 margin-bottom 间隙 */
 .flow-plus:hover { background: #4096ff; }
-.flow-branches { display: flex; gap: 12px; align-items: stretch; }
+
+/* 分支泳道：外层只做定位容器（宽度 = lane 宽度），保证整体在画布中水平居中 */
+.flow-branches { position: relative; }
+.flow-lane {
+  position: relative; display: flex; gap: 12px; align-items: stretch;
+  padding: 14px 16px; /* 上下留出汇聚线与分支之间的接入空间 */
+}
+/* 顶部/底部汇聚线：横贯泳道，上游流入线在顶部中点接入，下游从底部中点流出 */
+.flow-lane::before,
+.flow-lane::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 2px;
+  background: #caccd9;
+}
+.flow-lane::before { top: 0; }
+.flow-lane::after { bottom: 0; }
+
+/* 分支上下接入短线：从分支边缘延伸到汇聚线（先于卡片渲染，被内容遮住亦无碍） */
+.lane-stub {
+  position: absolute; left: 50%; width: 2px; margin-left: -1px;
+  background: #caccd9;
+}
+/* 高度 20px = 泳道 padding 14px + 深入分支 6px，确保与标签/卡片视觉相接 */
+.lane-stub-top { top: -14px; height: 20px; }
+.lane-stub-bottom { bottom: -14px; height: 20px; }
+
 .flow-branch {
+  position: relative; /* 接入短线的定位基准 */
   display: flex; flex-direction: column; align-items: center;
   background: #fafbfc; border: 1px solid #f0f0f0; border-radius: 10px;
-  padding: 10px 8px; min-width: 250px;
+  padding: 0 10px; /* 上下不留内边距：让 + 号连线直接贴合分支边缘 */
+  min-width: 250px;
 }
+.flow-add-branch {
+  /* 骑在顶部汇聚线中点：既标记汇流点，又与节点间 + 号保持一致的交互暗示 */
+  position: absolute; left: 50%; top: 0; transform: translate(-50%, -50%);
+  z-index: 2; cursor: pointer; color: #1677ff;
+  font-size: 12px; padding: 1px 10px; border-radius: 12px;
+  background: #fff; border: 1px solid #91caff; white-space: nowrap; user-select: none;
+}
+.flow-add-branch:hover { background: #f0f5ff; }
 .flow-branch-tag {
   width: 100%; box-sizing: border-box; border-radius: 8px; padding: 6px 10px;
   cursor: pointer; background: #fffbe6; border: 1px dashed #faad14;
