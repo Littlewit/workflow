@@ -241,11 +241,12 @@ async def purge_demo_data(factory) -> None:
                 delete(WorkflowDefinitionVersion).where(WorkflowDefinitionVersion.definition_id.in_(def_ids))
             )
             await session.execute(delete(WorkflowDefinition).where(WorkflowDefinition.id.in_(def_ids)))
-        # 联调遗留的"另存副本"草稿（演示账号名下的 draft 副本，无实例数据）
+        # 联调遗留的"另存副本"草稿（演示账号名下的 draft 副本，无实例数据）。
+        # 注意：SQLite LIKE 未指定 ESCAPE 时反斜杠无转义语义，直接用 _ 通配即可
         junk = (await session.execute(
             select(WorkflowDefinition).where(
                 WorkflowDefinition.status == "draft",
-                WorkflowDefinition.code.like("%\\_copy\\_%"),
+                WorkflowDefinition.code.like("%_copy_%"),
             )
         )).scalars().all()
         for d in junk:

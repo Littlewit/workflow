@@ -265,6 +265,12 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 /* 泳道与下游节点之间：接入短线向下伸出 20px，与箭头（占最后 5px）衔接 */
 .flow-canvas.readonly .flow-branches { margin-bottom: 24px; }
+/* 泳道底部中线：从泳道底边延伸到下游节点/结束卡片顶边，
+   补上"分支直达结束"（中间无节点）场景缺失的指向线 */
+.flow-canvas.readonly .flow-branches::after {
+  content: ''; position: absolute; left: 50%; bottom: -24px;
+  width: 2px; height: 24px; margin-left: -1px; background: #caccd9;
+}
 .flow-canvas.readonly .flow-branch { padding-bottom: 8px; }
 /* 末尾节点（结束卡片/分支链最后一步）不再画下垂连线 */
 .flow-canvas.readonly .flow-node:last-child { padding-bottom: 0; }
